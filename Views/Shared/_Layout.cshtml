@@ -3,32 +3,28 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="~/Content/Site.css" />
+    <link rel="stylesheet" href="../Content/Site.css" />
     <title>@ViewBag.Title - My ASP.NET Application</title>
     @Styles.Render("~/Content/css")
-    @Scripts.Render("~/bundles/modernizr")
-    @Scripts.Render("~/bundles/jquery")
-    @Scripts.Render("~/bundles/bootstrap")
-    @RenderSection("scripts", required: false)
 </head>
 <body>
-    <header>
-        <nav class="navbar navbar-expand-sm navbar-toggleable-sm border-bottom box-shadow mb-3">
-            <div class="container">
-                <a class="navbar-brand" href="/Home/Index">
-                    <img src=".\assets\UC_LOGO_NO_BACKGROUND.png" class="header_image" />
+    <header class="header" id="headerObj">
+        <nav class="uc-navbar container">
+            <div class="uc-navbar-container">
+                <a class="uc-navbar-title uc-navbar-logo uc-navbar-link" href="../Home/Index">
+                    <img src="..\assets\UC_LOGO_NO_BACKGROUND.png" class="header-image" />
                     Uncreated Warfare
                 </a>
-            </div>
-            <div class="navbar-collapse collapse d-sm-inline-flex justify-content-between">
-                <ul class="navbar-nav flex-grow-1">
-                    <li class="nav-item">
-                        <a class="nav-link" href="~/Home/Index">Warfare</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="~/Loadouts/Editor">Loadout Maker</a>
-                    </li>
-                </ul>
+                <div class="uc-navbar-list-container">
+                    <ul class="uc-navbar-list">
+                        <li class="uc-navbar-item">
+                            <a class="uc-navbar-link" href="../Home/Index">Warfare</a>
+                        </li>
+                        <li class="uc-navbar-item">
+                            <a class="uc-navbar-link" href="../Loadouts/Editor">Loadout Maker</a>
+                        </li>
+                    </ul>
+                </div>
             </div>
         </nav>
     </header>
@@ -38,11 +34,14 @@
         </main>
     </div>
 
-    <footer class="border-top footer text-muted">
-        <div class="container">
+    <footer class="footer container" id="footerObj">
+        <div>
             Uncreated Warfare (420, BlazingFlame)
         </div>
     </footer>
-
+    @Scripts.Render("~/bundles/modernizr")
+    @Scripts.Render("~/bundles/jquery")
+    @Scripts.Render("~/bundles/bootstrap")
+    @RenderSection("scripts", required: false)
 </body>
 </html>

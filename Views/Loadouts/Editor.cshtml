@@ -1,67 +1,15 @@
 ﻿@{
-    ViewBag.Title = "Loadout Maker";
-    Layout = null;
+    ViewBag.Title = "Loadout Creator";
 }
-
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Uncreated Warfare Loadout Maker</title>
-    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
-    <link rel="stylesheet" href="~/Content/Site.css" />
-    <style>
-        .canvas-container {
-            border: 2px;
-            border-color: black;
-            display: block;
-            margin-left: auto;
-            margin-right: auto;
-        }
-    </style>
-    @Styles.Render("~/Content/css")
-    @Scripts.Render("~/bundles/modernizr")
-    @Scripts.Render("~/bundles/jquery")
-    @Scripts.Render("~/bundles/bootstrap")
-    <script src="~/loadout_assets/editor.js" type="text/javascript"></script>
-</head>
-<body onresize="resizeInt()" onload="startEditor()">
-    <header id="headerObj">
-        <nav class="navbar navbar-expand-sm navbar-toggleable-sm border-bottom box-shadow mb-3">
-            <div class="container">
-                <a class="navbar-brand" href="~/Home/Index">
-                    <img src="~/assets/UC_LOGO_NO_BACKGROUND.png" class="header_image" />
-                    Uncreated Warfare
-                </a>
-                <button class="navbar-toggler" type="button" data-toggle="collapse" data-target=".navbar-collapse" aria-controls="navbarSupportedContent"
-                        aria-expanded="false" aria-label="Toggle navigation">
-                    <span class="navbar-toggler-icon"></span>
-                </button>
-                <div class="navbar-collapse collapse d-sm-inline-flex justify-content-between">
-                    <ul class="navbar-nav flex-grow-1">
-                        <li class="nav-item">
-                            <a class="nav-link" href="~/Home/Index">Warfare</a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="~/Loadouts/Editor">Loadout Maker</a>
-                        </li>
-                    </ul>
-                </div>
-            </div>
-        </nav>
-    </header>
-    <div>
-        <main role="main" class="pb-3">
-            <div class="canvas-container" id="canvas-container">
-            </div>
-        </main>
-    </div>
-
-    <footer class="border-top footer text-muted" id="footerObj">
-        <div class="container">
-            Uncreated Warfare (420, BlazingFlame)
-        </div>
-    </footer>
-</body>
-</html>
+@section Scripts {
+    <script src="../loadout_assets/editor.js" type="text/javascript"></script>
+}
+<style>
+    div.container {
+        margin-right: 0px !important;
+        margin-left: 0px !important;
+        padding-right: 0px !important;
+        padding-left: 0px !important;
+    }
+</style>
+<div class="canvas-container" id="canvas-container" onload="startEditor()" />
