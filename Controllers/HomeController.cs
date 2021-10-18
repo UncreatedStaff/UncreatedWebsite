@@ -12,7 +12,6 @@ namespace UCWebsite.Controllers
         {
             return View();
         }
-
         public ActionResult LoadoutCreator()
         {
             return View();

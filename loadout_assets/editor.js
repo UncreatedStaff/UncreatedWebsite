@@ -6,7 +6,15 @@
     VEST: 4,
     SHIRT: 5,
     PANTS: 6,
-    STORAGE: 7
+    STORAGE: 7,
+    C_NONE: -1,
+    C_HAT: -2,
+    C_GLASSES: -3,
+    C_MASK: -4,
+    C_SHIRT: -5,
+    C_VEST: -6,
+    C_BACKPACK: -7,
+    C_PANTS: -8
 }
 const tileSize = 32;
 document.body.onload = startEditor;
@@ -33,16 +41,24 @@ const Program = {
         this.canvas.addEventListener("click", onClick);
         this.canvas.addEventListener("mousemove", onMouseMove);
         this.pages = new Pages(25, 25);
-        this.pages.addSlot(PAGES.PRIMARY, "Primary", tileSize * 6, tileSize * 4, true, true);
-        this.pages.addSlot(PAGES.SECONDARY, "Secondary", tileSize * 6, tileSize * 4, true, true);
+        this.pages.addSlot(PAGES.PRIMARY, "Primary", tileSize * 6, tileSize * 4, true,  (item) => item.isWeapon);
+        this.pages.addSlot(PAGES.SECONDARY, "Secondary", tileSize * 6, tileSize * 4, true, (item) => item.isWeapon && item.isSecondary);
         this.pages.addPage(PAGES.HANDS, 5, 3, "Hands", tileSize, true);
         this.pages.addPage(PAGES.BACKPACK, 8, 5, "Backpack", tileSize, true);
         this.pages.addPage(PAGES.VEST, 5, 4, "Vest", tileSize, true);
         this.pages.addPage(PAGES.SHIRT, 6, 3, "Shirt", tileSize, true);
         this.pages.addPage(PAGES.PANTS, 4, 3, "Pants", tileSize, true);
-        this.pages.addItem(new Item(31452, 0, 0, 5, 2, 0, "SVD", "snipes", 0));
-        this.pages.addItem(new Item(31387, 0, 0, 4, 2, 0, "Vector", "shoots", 1));
-        this.pages.addItem(new Item(490, 1, 1, 3, 2, 0, "Chain Saw", "Cuts down trees", 2));
+        this.pages.addSlot(PAGES.C_HAT, "Hat", tileSize * 4, tileSize * 4, true, (item) => item.clothingType == PAGES.C_HAT);
+        this.pages.addSlot(PAGES.C_GLASSES, "Glasses", tileSize * 4, tileSize * 4, true, (item) => item.clothingType == PAGES.C_GLASSES);
+        this.pages.addSlot(PAGES.C_MASK, "Mask", tileSize * 4, tileSize * 4, true, (item) => item.clothingType == PAGES.C_MASK);
+        this.pages.addSlot(PAGES.C_SHIRT, "Shirt", tileSize * 4, tileSize * 4, true, (item) => item.clothingType == PAGES.C_SHIRT);
+        this.pages.addSlot(PAGES.C_VEST, "Vest", tileSize * 4, tileSize * 4, true, (item) => item.clothingType == PAGES.C_VEST);
+        this.pages.addSlot(PAGES.C_BACKPACK, "Backpack", tileSize * 4, tileSize * 4, true, (item) => item.clothingType == PAGES.C_BACKPACK);
+        this.pages.addSlot(PAGES.C_PANTS, "Pants", tileSize * 4, tileSize * 4, true, (item) => item.clothingType == PAGES.C_PANTS);
+        //this.pages.loadKit("usrif1");
+        this.pages.addItem(new Item(31452, 0, 0, 5, 2, 0, "SVD", "snipes", 0), (item) => { item.isWeapon = true; });
+        this.pages.addItem(new Item(31387, 0, 0, 4, 2, 0, "Vector", "shoots", 1), (item) => { item.isWeapon = true; item.isSecondary = true; });
+        this.pages.addItem(new Item(490, 1, 1, 3, 2, 0, "Chain Saw", "Cuts down trees", 2), (item) => { item.isWeapon = true; item.isSecondary = true; });
         this.pages.addItem(new Item(1440, 1, 1, 3, 3, 0, "Industrial Gas Can", "5000 fuel", 3));
         this.pages.addItem(new Item(31902, 1, 2, 2, 2, 0, "Anti-tank Mine", "blows up", 4));
         this.pages.addItem(new Item(31903, 2, 1, 2, 2, 0, "Anti-tank Mine", "blows up", 6));
@@ -158,75 +174,6 @@ const widthMarginBetweenPages = 10;
 const defaultCellColor = "#0f0f0f";
 const hoveredCellColor = "#1f1f5f";
 const occupiedCellColor = "#0b0b0b";
-function InventoryCell(page = 0, posX = 0, posY = 0, tileSize = 128, notation = "A1", coordX = 0, coordY = 0)
-{
-    this.type = 0;
-    this.page = page;
-    this.coordX = coordX;
-    this.coordY = coordY;
-    this.notation = notation;
-    this.tileSizeX = tileSize;
-    this.tileSizeY = tileSize;
-    this.posX = posX;
-    this.posY = posY;
-    this.radius = getRadius(radius);
-    this.color = defaultCellColor;
-    this.occupied = false;
-    this.checkOccupied = function ()
-    {
-        if (Program.pages == null || Program.pages.pages == null || Program.pages.pages[this.page] == null) return false;
-        for (var i = 0; i < Program.pages.pages[this.page].page.items.length; i++)
-        {
-            var item = Program.pages.pages[this.page].page.items[i];
-            if (item.x === this.coordX && item.y === this.coordY) return true;
-            var bottomX = item.x + item.sizes.width;
-            var bottomY = item.y + item.sizes.height;
-            if (this.coordX > item.x && this.coordX < bottomX && this.coordY > item.y && this.coordY < bottomY) return true;
-        }
-        return false;
-    }
-    this.render = function (ctx)
-    {
-        roundedRectPath(ctx, this.posX, this.posY, this.tileSizeX, this.tileSizeY, this.radius);
-        ctx.globalAlpha = 0.5;
-        ctx.fillStyle = this.occupied ? occupiedCellColor : this.color;
-        ctx.fill();
-        ctx.globalAlpha = 1.0;
-        ctx.strokeStyle = "#000000";
-        ctx.stroke();
-    } 
-}
-function SlotCell(page = 0, posX = 0, posY = 0, tileSizeX = 128, tileSizeY = 128)
-{
-    this.type = 1;
-    this.page = page;
-    this.coordX = 0;
-    this.coordY = 0;
-    this.notation = "A1";
-    this.tileSizeX = tileSizeX;
-    this.tileSizeY = tileSizeY;
-    this.posX = posX;
-    this.posY = posY;
-    this.radius = getRadius(radius);
-    this.color = defaultCellColor;
-    this.occupied = false;
-    this.checkOccupied = function ()
-    {
-        if (!Program.pages.checkCoords(this.page, 0, 0)) return false;
-        if (Program.pages.pages[this.page].page.items.length < 1) return false;
-        else return true;
-    }
-    this.render = function (ctx)
-    {
-        roundedRectPath(ctx, this.posX, this.posY, this.tileSizeX, this.tileSizeY, this.radius);
-        ctx.globalAlpha = 0.5;
-        ctx.fillStyle = this.occupied ? occupiedCellColor : this.color;
-        ctx.fill();
-        ctx.globalAlpha = 1.0;
-        ctx.strokeStyle = "#000000";
-        ctx.stroke();
-    }
-}
 function Pages(posX = 0, posY = 0)
 {
     this.posX = posX;
@@ -372,14 +319,14 @@ function Pages(posX = 0, posY = 0)
         }
         return this.pages[page].page.removeItem(x, y);
     }
-    this.addItem = function (item)
+    this.addItem = function (item, itemChange = (item) => { })
     {
         if (this.pages.length <= item.page)
         {
             console.warn(`Tried to add item with out of range page: ${page}.`);
             return false;
         }
-        return this.pages[item.page].page.addItem(item);
+        return this.pages[item.page].page.addItem(item, itemChange);
     }
     this.propogateRotate = function ()
     {
@@ -402,18 +349,19 @@ function Pages(posX = 0, posY = 0)
         {
             return false;
         }
-        item.x = x;
-        item.y = y;
         if (item.page != page)
         {
             var pg = this.pages[page].page;
-            for (var i = 0; i < this.pages[item.page].page.items.length; i++) // clear from other page
+            var oldpg = this.pages[item.page].page;
+            for (var i = 0; i < oldpg.items.length; i++) // clear from other page
             {
-                var l_item = this.pages[item.page].page.items[i];
-                if (l_item.x == item.x && l_item.y == item.y) this.pages[item.page].page.items.splice(i, 1);
+                var l_item = oldpg.items[i];
+                if (l_item.x == item.x && l_item.y == item.y) oldpg.items.splice(i, 1);
             }
             if (pg.type === 1)
             {
+                item.x = x;
+                item.y = y;
                 item.tileSizeX = pg.tileSizeX;
                 item.tileSizeY = pg.tileSizeY;
                 item.inSlot = true;
@@ -434,6 +382,8 @@ function Pages(posX = 0, posY = 0)
                 pg.items.push(item);
             }
         }
+        item.x = x;
+        item.y = y;
         item.rotation = rotation;
         item.sizes = item.getSizes(item.rotation);
         item.pendingRotation = item.rotation;
@@ -445,6 +395,7 @@ function Pages(posX = 0, posY = 0)
     {
         if (!this.checkCoords(page, x, y))
             return false;
+        if (!this.pages[page].page.canEquip(item)) return false;
         if (this.pages[page].page.type == 1)
         {
             if (!this.pages[page].page.cells[x][y].occupied || (this.pages[page].page.items.length > 0 && this.pages[page].page.items[0] === item))
@@ -498,22 +449,23 @@ function Pages(posX = 0, posY = 0)
         sizeX: 1,
         sizeY: 1,
         title: "",
-        tileSize: 128
+        tileSize: 128,
+        canEquip: (item) => true
     }, holdUpdate = false)
     {
         this.pages.push({ page: page, column: 0, row: 0 });
         if (!holdUpdate)
             this.updateScale();
     }
-    this.addPage = function (pageID = 0, sizeX = 1, sizeY = 1, title = "PAGE", tileSize = 128, holdUpdate = false)
+    this.addPage = function (pageID = 0, sizeX = 1, sizeY = 1, title = "PAGE", tileSize = 128, holdUpdate = false, addConstraint = (item) => true)
     {
-        this.pages.push({ page: new Page(this.pages.length, pageID, this.posX, this.posY, sizeX, sizeY, title, tileSize), column: 0, row: 0 });
+        this.pages.push({ page: new Page(this.pages.length, pageID, this.posX, this.posY, sizeX, sizeY, title, tileSize, addConstraint), column: 0, row: 0 });
         if (!holdUpdate)
             this.updateScale();
     }
-    this.addSlot = function (pageID = 0, title = "PAGE", tileSizeX = 128, tileSizeY = 128, holdUpdate = false)
+    this.addSlot = function (pageID = 0, title = "PAGE", tileSizeX = 128, tileSizeY = 128, holdUpdate = false, addConstraint = (item) => true)
     {
-        this.pages.push({ page: new SlotPage(this.pages.length, pageID, this.posX, this.posY, title, tileSizeX, tileSizeY), column: 0, row: 0 });
+        this.pages.push({ page: new SlotPage(this.pages.length, pageID, this.posX, this.posY, title, tileSizeX, tileSizeY, addConstraint), column: 0, row: 0 });
         if (!holdUpdate)
             this.updateScale();
     }
@@ -523,13 +475,14 @@ function Pages(posX = 0, posY = 0)
         else return this.pages[page].page.cells[x][y];
     }
 }
-function SlotPage(page = 0, pageID = 0, posX = 0, posY = 0, title = "PAGE", tileSizeX = 128, tileSizeY = 128)
+function SlotPage(page = 0, pageID = 0, posX = 0, posY = 0, title = "PAGE", tileSizeX = 128, tileSizeY = 128, canEquip = (item) => true)
 {
     this.type = 1;
     this.page = page;
     this.pageID = pageID;
     this.posX = posX;
     this.posY = posY;
+    this.canEquip = canEquip;
     this.tileSizeX = tileSizeX;
     this.tileSizeY = tileSizeY;
     this.sizeX = 1;
@@ -595,7 +548,7 @@ function SlotPage(page = 0, pageID = 0, posX = 0, posY = 0, title = "PAGE", tile
         description: "#DESC",
         tileSize: 128,
         page: 0
-    })
+    }, itemChange = (item) => { })
     {
         if (this.items.length > 0)
         {
@@ -604,22 +557,24 @@ function SlotPage(page = 0, pageID = 0, posX = 0, posY = 0, title = "PAGE", tile
         if (item == null)
         {
             console.warn(`Tried to add undefined item to page ${this.title}.`);
-            return;
+            return false;
         }
         if (Program.pages.checkCoords(this.page, item.x, item.y))
         {
             item.inSlot = true;
             item.tileSizeX = this.tileSizeX;
             item.tileSizeY = this.tileSizeY;
+            itemChange(item);
             this.items.push(item);
+            Program.invalidate();
+            return item;
         }
         else
         {
             console.warn(`Tried to add and item to an invalid spot.`);
-            return;
+            return false;
         }
         this.items.push(item);
-        Program.invalidate();
     }
     this.removeItem = function ()
     {
@@ -667,10 +622,11 @@ function SlotPage(page = 0, pageID = 0, posX = 0, posY = 0, title = "PAGE", tile
         Program.invalidate();
     }
 }
-function Page(page = 0, pageID = 0, posX = 0, posY = 0, sizeX = 4, sizeY = 3, title = "PAGE", tileSize = 128)
+function Page(page = 0, pageID = 0, posX = 0, posY = 0, sizeX = 4, sizeY = 3, title = "PAGE", tileSize = 128, canEquip = (item) => true)
 {
     this.type = 0;
     this.page = page;
+    this.canEquip = canEquip;
     this.pageID = pageID;
     this.posX = posX;
     this.posY = posY;
@@ -756,26 +712,28 @@ function Page(page = 0, pageID = 0, posX = 0, posY = 0, sizeX = 4, sizeY = 3, ti
         description: "#DESC",
         tileSize: 128,
         page: 0
-    })
+    }, itemChange = (item) => {})
     {
         if (item == null)
         {
             console.warn(`Tried to add undefined item to page ${this.title}`);
-            return;
+            return false;
         }
         if (Program.pages.checkCoords(this.page, item.x, item.y))
         {
             item.tileSizeX = this.cells[item.x][item.y].tileSizeX;
             item.tileSizeY = this.cells[item.x][item.y].tileSizeY;
             item.inSlot = false;
+            itemChange(item);
             this.items.push(item);
+            Program.invalidate();
+            return item;
         }
         else
         {
             console.warn(`Tried to add and item to an invalid spot.`);
-            return;
+            return false;
         }
-        Program.invalidate();
     }
     this.removeItem = function (x = 0, y = 0)
     {
@@ -926,6 +884,75 @@ function Page(page = 0, pageID = 0, posX = 0, posY = 0, sizeX = 4, sizeY = 3, ti
         Program.invalidate();
     }
 }
+function InventoryCell(page = 0, posX = 0, posY = 0, tileSize = 128, notation = "A1", coordX = 0, coordY = 0)
+{
+    this.type = 0;
+    this.page = page;
+    this.coordX = coordX;
+    this.coordY = coordY;
+    this.notation = notation;
+    this.tileSizeX = tileSize;
+    this.tileSizeY = tileSize;
+    this.posX = posX;
+    this.posY = posY;
+    this.radius = getRadius(radius);
+    this.color = defaultCellColor;
+    this.occupied = false;
+    this.checkOccupied = function ()
+    {
+        if (Program.pages == null || Program.pages.pages == null || Program.pages.pages[this.page] == null) return false;
+        for (var i = 0; i < Program.pages.pages[this.page].page.items.length; i++)
+        {
+            var item = Program.pages.pages[this.page].page.items[i];
+            if (item.x === this.coordX && item.y === this.coordY) return true;
+            var bottomX = item.x + item.sizes.width;
+            var bottomY = item.y + item.sizes.height;
+            if (this.coordX > item.x && this.coordX < bottomX && this.coordY > item.y && this.coordY < bottomY) return true;
+        }
+        return false;
+    }
+    this.render = function (ctx)
+    {
+        roundedRectPath(ctx, this.posX, this.posY, this.tileSizeX, this.tileSizeY, this.radius);
+        ctx.globalAlpha = 0.5;
+        ctx.fillStyle = this.occupied ? occupiedCellColor : this.color;
+        ctx.fill();
+        ctx.globalAlpha = 1.0;
+        ctx.strokeStyle = "#000000";
+        ctx.stroke();
+    }
+}
+function SlotCell(page = 0, posX = 0, posY = 0, tileSizeX = 128, tileSizeY = 128)
+{
+    this.type = 1;
+    this.page = page;
+    this.coordX = 0;
+    this.coordY = 0;
+    this.notation = "A1";
+    this.tileSizeX = tileSizeX;
+    this.tileSizeY = tileSizeY;
+    this.posX = posX;
+    this.posY = posY;
+    this.radius = getRadius(radius);
+    this.color = defaultCellColor;
+    this.occupied = false;
+    this.checkOccupied = function ()
+    {
+        if (!Program.pages.checkCoords(this.page, 0, 0)) return false;
+        if (Program.pages.pages[this.page].page.items.length < 1) return false;
+        else return true;
+    }
+    this.render = function (ctx)
+    {
+        roundedRectPath(ctx, this.posX, this.posY, this.tileSizeX, this.tileSizeY, this.radius);
+        ctx.globalAlpha = 0.5;
+        ctx.fillStyle = this.occupied ? occupiedCellColor : this.color;
+        ctx.fill();
+        ctx.globalAlpha = 1.0;
+        ctx.strokeStyle = "#000000";
+        ctx.stroke();
+    }
+}
 const itemIconPrefix = "../loadout_assets/Items/";
 const previewColor = "#ffffff";
 const previewColorBad = "#ffaaaa";
@@ -937,6 +964,9 @@ function Item(id = 0, x = 0, y = 0, sizeX = 1, sizeY = 1, rotation = 0, name = "
     this.x = x;
     this.y = y;
     this.page = page;
+    this.isWeapon = false;
+    this.isSecondary = false;
+    this.clothingType = PAGES.C_NONE;
     this.sizeX = sizeX;
     this.sizeY = sizeY;
     this.rotation = rotation;
@@ -1274,7 +1304,7 @@ function keyPress(event)
     }
     else if (event.keyCode === 84) // t
     {
-        sendData({ kitName: "usrif2" }, "GetKit");
+        call({ item: 31387 }, "GetItem");
     }
 }
 function onSuccessSend(response, textStatus = "", jqXHR)
