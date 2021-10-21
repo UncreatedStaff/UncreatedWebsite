@@ -6,7 +6,7 @@ using Uncreated.Networking.Encoding;
 using Uncreated.SQL;
 using Newtonsoft.Json;
 
-namespace UCWebsite
+namespace Uncreated.Website
 {
     public class Settings
     {

@@ -1,7 +1,7 @@
 ﻿using System.Web;
 using System.Web.Optimization;
 
-namespace UCWebsite
+namespace Uncreated.Website
 {
     public class BundleConfig
     {

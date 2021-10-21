@@ -8,7 +8,7 @@ using Newtonsoft.Json;
 using System.Globalization;
 using System.Diagnostics;
 
-namespace UCWebsite
+namespace Uncreated.Website
 {
     public class Program
     {
@@ -25,7 +25,19 @@ namespace UCWebsite
             Logging.OnLogWarning += LogWarn;
             Logging.OnLogError += LogError;
             Logging.OnLogException += LogException;
-            NetFactory.RegisterNetMethods(Assembly.GetExecutingAssembly(), ENetCall.FROM_SERVER);
+            Assembly assembly = Assembly.GetExecutingAssembly();
+            Debug.WriteLine(assembly == null ? "null assembly" : assembly.FullName);
+            try
+            {
+                NetFactory.RegisterNetMethods(assembly, ENetCall.FROM_SERVER);
+            }
+            catch (ReflectionTypeLoadException ex)
+            {
+                foreach (Exception inner in ex.LoaderExceptions)
+                {
+                    Debug.WriteLine(inner.ToString());
+                }
+            }
             I = new Program();
             NetClient = new Client(Settings.TCPData);
         }
