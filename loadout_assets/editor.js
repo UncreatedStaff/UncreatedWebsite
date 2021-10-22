@@ -28,6 +28,7 @@ const Program = {
     canvas: null,
     context: null,
     header: null,
+    wiki: null,
     start: function () 
     {
         document.onkeydown = keyPress;
@@ -67,6 +68,7 @@ const Program = {
         this.pages.addPage(PAGES.HANDS, 5, 3, "Hands", tileSize, true);
         this.pages.sortPages();
         this.dictionary = new Dictionary();
+        this.wiki = new Wiki();
         this.interval = setInterval(tickInt, 0.1);
         this.updateScale();
         this.tick();
@@ -94,7 +96,11 @@ const Program = {
                     else
                     {
                         Program.DATA = response.responseJSON.State;
-                        this.onMouseMoved(0, 0);
+                        this.onMouseMoved(-127, -127);
+                        Program.dictionary.items = Program.DATA.items;
+                        Program.dictionary.activeItems = Program.DATA.items.slice();
+                        Program.dictionary.loadItems();
+                        Program.dictionary.updateFilters(true);
                         if (!Program.moveConsumed)
                             Program.invalidate();
                     }
@@ -117,13 +123,19 @@ const Program = {
     },
     tick: function ()
     {
-        if (!this.invalidated) return;
+        if (!this.invalidated && this.invalidateTimeRemaining <= 0) return;
         var nextTick = new Date().getTime();
         this.deltaTime = (nextTick - this.lastTick) / 1000.0;
         this.time += this.deltaTime;
         this.lastTick = nextTick;
         this.ticks++;
-        this.invalidated = tick(this.context, this.deltaTime, this.time, this.ticks, this.canvas);
+        if (this.invalidateTimeRemaining > 0)
+        {
+            this.invalidateTimeRemaining -= this.deltaTime;
+            if (this.invalidateTimeRemaining < 0) this.invalidateTimeRemaining = 0;
+        }
+        this.invalidatedAfter = false;
+        this.invalidated = tick(this.context, this.deltaTime, this.time, this.ticks, this.canvas) || this.invalidatedAfter;
     },
     clearCanvas: function ()
     {
@@ -141,9 +153,9 @@ const Program = {
             this.pages.onClick(x, y);
         }
         if (!this.inputConsumed && this.dictionary)
-        {
             this.dictionary.onClick(x, y);
-        }
+        if (!this.inputConsumed && this.wiki)
+            this.wiki.onClick(x, y);
         if (this.inputConsumed)
             this.tick();
     },
@@ -155,13 +167,11 @@ const Program = {
         if (Program.popup != null && Program.popup.consumeKeys)
             Program.popup.onMouseMoved(x, y);
         else
-        {
             this.pages.onMouseMoved(x, y);
-        }
         if (!this.moveConsumed && this.dictionary)
-        {
             this.dictionary.onMouseMoved(x, y);
-        }
+        if (!this.moveConsumed && this.wiki)
+            this.wiki.onMouseMoved(x, y);
         if (this.moveConsumed)
             this.tick();
     },
@@ -169,11 +179,22 @@ const Program = {
     lastTick: 0,
     ticks: 0,
     deltaTime: 0,
+    invalidateTimeRemaining: 0,
     pages: null,
     invalidated: true,
+    invalidatedAfter: false,
     invalidate: function ()
     {
         this.invalidated = true;
+    },
+    invalidateNext: function (seconds)
+    {
+        if (this.invalidateTimeRemaining >= seconds) return;
+        this.invalidateTimeRemaining = seconds;
+    },
+    invalidateAfter: function ()
+    {
+        this.invalidatedAfter = true;
     }
 }
 function resizeInt()
@@ -258,10 +279,15 @@ function tick(ctx, deltaTime, realtime, ticks, canvas)
     }
     Program.pages.render(ctx);
     var loop = false;
-    if (!this.isLoading && Program.popup != null)
-        loop |= Program.popup.render(ctx, deltaTime, realtime);
-    if (!this.isLoading && Program.dictionary != null)
-        loop |= Program.dictionary.render(ctx, deltaTime, realtime);
+    if (!this.isLoading)
+    {
+        if (Program.popup)
+            loop |= Program.popup.render(ctx, deltaTime, realtime);
+        if (Program.dictionary)
+            loop |= Program.dictionary.render(ctx, deltaTime, realtime);
+        if (Program.wiki)
+            loop |= Program.wiki.render(ctx, deltaTime, realtime);
+    }
     ctx.textAlign = 'right';
     ctx.fillStyle = '#ffffff';
     ctx.font = '10px Consolas';
@@ -368,22 +394,22 @@ function Pages(posX = 0, posY = 0)
     this.onClick = function (x, y)
     {
         if (x < this.posX || y < this.posY) return;
+        if (this.pickedItem != null)
+        {
+            this.pickedItem.onClick(x, y);
+            if (Program.inputConsumed) return;
+        }
         for (var i = 0; i < this.pages.length; i++)
         {
             var cell = this.pages[i].page.getCellByCoords(x, y);
             if (cell)
             {
-                if (this.pickedItem != null)
-                {
-                    this.pickedItem.onClick(x, y, cell, i);
-                    if (Program.inputConsumed) return;
-                }
                 for (var j = 0; j < this.pages[i].page.items.length; j++)
                 {
                     var item = this.pages[i].page.items[j];
                     if (!item.isPicked && cell.coordX >= item.x && cell.coordY >= item.y && cell.coordX < item.x + item.sizes.width && cell.coordY < item.y + item.sizes.height)
                     {
-                        item.onClick(x, y, cell, i);
+                        item.onClick(x, y);
                         if (Program.inputConsumed) return;
                     }
                 }
@@ -1398,7 +1424,8 @@ function Item(id = 0, x = 0, y = 0, sizeX = 1, sizeY = 1, rotation = 0, name = "
             this.renderPreview(ctx, xo, yo, cell);
             this.renderAt(ctx, xo, yo, pickedColor, 0.75, this.pendingRotation, cell, this.inSlot, this.pendingSizes, true);
             cell = Program.pages.cell(this.page, this.x, this.y);
-            this.renderAt(ctx, cell.posX, cell.posY, pickedColor, 0.25, this.rotation, cell, this.inSlot, this.sizes);
+            if (cell)
+                this.renderAt(ctx, cell.posX, cell.posY, pickedColor, 0.25, this.rotation, cell, this.inSlot, this.sizes);
         }
         else
         {
@@ -1535,7 +1562,7 @@ function Item(id = 0, x = 0, y = 0, sizeX = 1, sizeY = 1, rotation = 0, name = "
         Program.invalidate();
         return true;
     }
-    this.onClick = function (x, y, c, page)
+    this.onClick = function (x, y)
     {
         if (this.isPicked)
         {
@@ -1546,7 +1573,7 @@ function Item(id = 0, x = 0, y = 0, sizeX = 1, sizeY = 1, rotation = 0, name = "
             var moved = false;
             this.clearOccupiedFromSlots();
             if (this.page != cell.page || this.x != cell.coordX || this.y != cell.coordY || this.pendingRotation != this.rotation)
-                moved = Program.pages.moveItem(this, cell.coordX, cell.coordY, this.pendingRotation, page, this.pendingSizes);
+                moved = Program.pages.moveItem(this, cell.coordX, cell.coordY, this.pendingRotation, cell.page, this.pendingSizes);
             if (moved)
             {
                 this.isPicked = false;
@@ -1619,7 +1646,8 @@ function onImageLoad()
             value.onload = null;
         }
     }
-    Program.invalidate();
+    Program.invalidateNext(0.2);
+    Program.tick();
 }
 function roundedRectPath(ctx, x = 0, y = 0, width = 128, height = 128, radius = { tl: 4, tr: 4, br: 4, bl: 4 })
 {
@@ -1650,6 +1678,40 @@ function roundedRect(ctx, x = 0, y = 0, width = 128, height = 128, radius, fill 
     if (!(stroke || fill)) return;
     radius = getRadius(radius);
     roundedRectPath(ctx, x, y, width, height, radius);
+    if (fill)
+        ctx.fill();
+    if (stroke)
+        ctx.stroke();
+}
+function roundedArrow(ctx, x = 0, y = 0, width = 128, height = 128, radius, fill = false, stroke = true, left = true)
+{
+    if (!(stroke || fill)) return;
+    radius = getRadius(radius);
+    if (left)
+    {
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x + width - radius.tr, y);
+        ctx.quadraticCurveTo(x + width, y, x + width, y + radius.tr);
+        ctx.lineTo(x + width, y + height - radius.br);
+        ctx.quadraticCurveTo(x + width, y + height, x + width - radius.br, y + height);
+        ctx.lineTo(x, y + height);
+        ctx.lineTo(x - width / 2, y + height / 2);
+        ctx.lineTo(x, y);
+        ctx.closePath();
+    } else
+    {
+        ctx.beginPath();
+        ctx.moveTo(x + radius.tl, y);
+        ctx.lineTo(x + width, y);
+        ctx.lineTo(x + 3 * width / 2, y + height / 2);
+        ctx.lineTo(x + width, y + height);
+        ctx.lineTo(x + radius.bl, y + height);
+        ctx.quadraticCurveTo(x, y + height, x, y + height - radius.bl);
+        ctx.lineTo(x, y + radius.tl);
+        ctx.quadraticCurveTo(x, y, x + radius.tl, y);
+        ctx.closePath();
+    }
     if (fill)
         ctx.fill();
     if (stroke)
@@ -2136,6 +2198,8 @@ function keyPress(event)
         Program.popup.keyPress(event);
     else if (Program.dictionary && Program.dictionary.consumeKeys)
         Program.dictionary.keyPress(event);
+    else if (Program.wiki && Program.wiki.consumeKeys)
+        Program.wiki.keyPress(event);
     else if (event.keyCode === 82) // r
     {
         Program.pages.propogateRotate();
@@ -2220,22 +2284,34 @@ function call(data, handler, response = onSuccessSend, error = onSendError)
     }
 }
 
-function DictionaryEntry(itemId = 0, itemData = null)
-{
-
-}
 
 const dictionaryAnimTimeSec = 0.2;
 const dictionaryAccent1 = "#9264cd";
 const dictionaryAccent2 = "#532c87";
 const dictionaryAccent3 = "#bb9fe0";
+const dictionaryAccent4Disabled = "#553355";
 const dictionaryBackground = "#0d0d0d";
+const dictionaryBackgroundAccent = "#1f0d1f";
+const dictionaryBackgroundAccentHovered = "#0f0d0f";
+const dictionaryBackgroundAccentOpposite = "#f5ffff";
+const dictionaryFilterEnabled = "#3399ff";
+const dictionaryFilterDisabled = "#e6e6e6";
 const dictionaryBkgrTransparency = 0.2;
 const dictionaryTitleTextSize = 20;
+const dictionaryEntryTitleTextSize = 20;
+const dictionaryEntryBodyTextSize = 16;
+const dictionaryFilterTextSize = 14;
 const dictionaryHeaderSize = 40;
+const dictionaryFooterSize = 80;
+const dictionaryFilterCountSpace = 5;
+const dictionaryFilterColumns = 6;
+const dictionaryItemColumns = 5;
+const dictionaryButtonSize = 60;
+const dictionaryItemRows = 3;
 function Filter(name = "", predicate = (itemData) => true)
 {
     this.enabled = false;
+    this.show = true;
     this.name = name;
     this.predicate = predicate;
     this.posX = 0;
@@ -2243,24 +2319,208 @@ function Filter(name = "", predicate = (itemData) => true)
     this.width = 0;
     this.height = 0;
     this.index = 0;
-    this.renderAt = function (ctx, x, y, w, h)
+    this.fullRadius = getRadius(4);
+    this.enabledRadius = getRadius2(4, 0, 4, 0);
+    this.found = 0;
+    this.owner = null;
+    this.x = 0;
+    this.y = 0;
+    this.render = function (ctx, xOffset, yOffset)
     {
-        this.posX = x;
-        this.posY = y;
-        this.width = w;
-        this.height = h;
+        if (!this.show) return;
+        this.x = xOffset + this.posX;
+        this.y = yOffset + this.posY;
+        if (this.enabled)
+        {
+            ctx.strokeStyle = dictionaryAccent1;
+        }
+        ctx.fillStyle = dictionaryFilterDisabled;
+        ctx.strokeStyle = dictionaryBackground;
+        ctx.strokeWeight = 3;
+        roundedRect(ctx, xOffset + this.posX, yOffset + this.posY, this.width, this.height, this.fullRadius, true, !this.enabled);
+        if (this.enabled)
+        {
+            ctx.fillStyle = this.enabled ? dictionaryFilterEnabled : dictionaryFilterDisabled;
+            roundedRect(ctx, xOffset + this.posX, yOffset + this.posY, this.width / 6, this.height, this.enabledRadius, true, false);
+            roundedRect(ctx, xOffset + this.posX, yOffset + this.posY, this.width, this.height, this.fullRadius, false, true);
+        }
+        ctx.strokeWeight = 1;
+        ctx.fillStyle = dictionaryFilterDisabled;
+        roundedRect(ctx, xOffset + this.posX + this.width / 16, yOffset + this.posY + this.height / 6, 7 * this.width / 8, 2 * this.height / 3, this.fullRadius, true, false);
+        var fontSize = Math.round(Program.canvas.height / 75);
+        ctx.font = fontSize.toString() + 'px Segoe UI';
+        ctx.fillStyle = dictionaryFilterEnabled;
+        ctx.textAlign = 'left';
+        var center = centerText(ctx, this.name, 7 * this.width / 8, 2 * this.height / 3, fontSize);
+        ctx.fillText(this.name, xOffset + this.posX + this.width / 16 + this.owner.margin / 3, yOffset + this.posY + this.height / 6 + center.height, 7 * this.width / 8);
+        ctx.textAlign = 'right';
+        ctx.fillText(this.found.toString(), xOffset + this.posX + 15 * this.width / 16 - this.owner.margin / 3, yOffset + this.posY + this.height / 6 + center.height);
+    }
+    this.onClick = function ()
+    {
+        this.enabled = !this.enabled;
+        if (this.enabled)
+            this.owner.activeFilters.push(this);
+        else
+        {
+            for (var f = 0; f < this.owner.activeFilters.length; f++)
+            {
+                if (this.owner.activeFilters[f].index === this.index)
+                {
+                    this.owner.activeFilters.splice(f, 1);
+                    break;
+                }
+            }
+        }
+        Program.invalidate();
+    }
+    this.mouseInside = function (x, y)
+    {
+        return x > this.x && x < this.x + this.width && y > this.y && y < this.y + this.height;
     }
 }
+const dictionaryEntryHoverOffset = 5;
+const dictionaryEntryHoverSpeed = 0.8;
+function DictionaryEntry(itemID = 0, itemData = null, owner = null)
+{
+    this.itemID = itemID;
+    this.itemData = itemData;
+    this.index = 0;
+    this.posX = 0;
+    this.isHovered = false;
+    this.posY = 0;
+    this.icon = null;
+    this.dontRequestImage = false;
+    this.hoverProgress = 0.0;
+    this.getIcon = function ()
+    {
+        if (this.dontRequestImage) return;
+        this.icon = Program.pages.iconCache.get(this.itemID);
+        if (!this.icon)
+        {
+            this.icon = new Image(this.itemData.sizeX * 512, this.itemData.sizeY * 512);
+            this.icon.id = this.itemID.toString();
+            this.icon.onload = onImageLoad;
+            this.icon.src = itemIconPrefix + this.itemID.toString() + ".png";
+            Program.pages.iconCache.set(this.itemID, this.icon);
+        }
+    }
+    this.width = 0;
+    this.height = 0;
+    this.radius = getRadius(12);
+    this.owner = owner;
+    this.margin = this.owner.margin / 2;
+    this.firstHover = false;
+    this.onHoverComplete = function ()
+    {
+        this.owner.close();
+        Program.wiki.loadItem(this.itemData);
+        Program.wiki.reopenToDictionary = true;
+        Program.wiki.open();
+    }
+    this.render = function (ctx, x, y)
+    {
+        if (this.isHovered && !this.firstHover)
+        {
+            this.hoverProgress += Program.deltaTime / dictionaryEntryHoverSpeed;
+            if (this.hoverProgress >= 1)
+            {
+                this.onHoverComplete();
+                this.hoverProgress = 0;
+            }
+            Program.invalidateAfter();
+        } else if (this.hoverProgress > 0)
+        {
+            this.hoverProgress = 0;
+            Program.invalidateAfter();
+        } else
+        {
+            this.firstHover = false;
+            Program.invalidateAfter();
+        }
+        if (this.itemData == null || this.itemID === 0)
+        {
+            ctx.strokeStyle = dictionaryAccent1;
+            ctx.strokeWeight = 5;
+            roundedRect(ctx, x + this.posX, y + this.posY, this.width, this.height, this.radius, false, true);
+            ctx.strokeWeight = 1;
+            return;
+        }
+        if (this.icon == null && !this.dontRequestImage)
+        {
+            this.getIcon();
+        }
+        if (this.hoverProgress <= 0)
+        {
+            ctx.fillStyle = dictionaryBackgroundAccent;
+        } else
+        {
+            var gradient = ctx.createLinearGradient(x + this.posX, y + this.posY + this.height, x + this.posX, y + this.posY);
+            if (this.hoverProgress < 0.95)
+            {
+                gradient.addColorStop(1, dictionaryBackgroundAccent);
+                gradient.addColorStop(this.hoverProgress < 0.85 ? this.hoverProgress + 0.15 : 1, dictionaryBackgroundAccent);
+            }
+            else
+                gradient.addColorStop(1, dictionaryBackgroundAccentHovered);
+            gradient.addColorStop(this.hoverProgress, dictionaryBackgroundAccentHovered);
+            gradient.addColorStop(0, dictionaryBackgroundAccentHovered);
+            ctx.fillStyle = gradient;
+        }
+        ctx.strokeStyle = dictionaryAccent1;
+        ctx.strokeWeight = 1;
+        var posy = this.isHovered ? y + this.posY - dictionaryEntryHoverOffset : y + this.posY;
+        var posx = this.isHovered ? x + this.posX - dictionaryEntryHoverOffset : x + this.posX;
+        var w = this.isHovered ? this.width + dictionaryEntryHoverOffset * 2 : this.width;
+        var h = this.isHovered ? this.height + dictionaryEntryHoverOffset * 2 : this.height;
+        roundedRect(ctx, posx, posy, w, h, this.radius, true, true);
+        posy += this.margin;
+        posx += this.margin;
+        ctx.font = "bold " + dictionaryEntryTitleTextSize.toString() + "px Segoe UI";
+        ctx.textAlign = 'left';
+        ctx.fillStyle = dictionaryBackgroundAccentOpposite;
+        var measure = ctx.measureText(this.itemData.LocalizedName);
+        var height = measure.actualBoundingBoxAscent && measure.actualBoundingBoxDescent ? measure.actualBoundingBoxAscent + measure.actualBoundingBoxDescent : dictionaryEntryTitleTextSize;
+        ctx.fillText(this.itemData.LocalizedName, x + this.posX + this.margin, posy + height, w - this.margin * 2);
+        posy += height + this.margin;
+        if (this.icon)
+        {
+            try
+            {
+                ctx.drawImage(this.icon, posx, posy, w - this.margin * 2, w - this.margin * 2);
+            }
+            catch
+            {
+                this.dontRequestImage = true;
+            }
+        }
+        else
+        {
+            ctx.fillStyle = "#999999";
+            ctx.fillRect(x + posx, posy, w - this.margin * 2, w - this.margin * 2);
+        }
+    }
+    this.onHover = function (x, y) 
+    {
+        if (!this.isHovered)
+            this.firstHover = true;
+    }
+}
+const blacklistedItems = [ 1522 ]
 function Dictionary()
 {
     this.gridSizeX = 8;
     this.gridSizeY = 50;
     this.width = 5;
     this.items = [];
+    this.currentPage = 0;
     this.activeItems = [];
+    this.entries = [];
     this.activeFilters = [];
+    this.defaultFilter = new Filter("DEFAULT", (i) =>
+        i.T !== 28 && i.T !== 35 && i.LocalizedName !== "#NAME" && !blacklistedItems.includes(i.ItemID) && (isNaN(Number(i.LocalizedName)) || !isNaN(Number(i.Name))) && (i.T != 1 || !i.IsTurret));
     this.filters = [
-        new Filter("Weapon", (i) => i.T === 1 || i.T === 3 || i.T === 40),
+        new Filter("Weapon", (i) => (i.T === 1 || i.T === 3 || i.T === 40) && i.ItemID > 30000),
         new Filter("Explosive", (i) => (i.T === 3 && i.Explosive) || i.T === 18 || (i.T === 8 && i.Explosive) || i.T === 31),
         new Filter("Medical", (i) => i.T === 42),
         new Filter("Consumable", (i) => (i.T === 14 && i.T !== 42) || i.T === 41 || i.T === 43 || (i.T === 19 && (i.Food.Clean > 0 || i.Water.Clean > 0))),
@@ -2284,18 +2544,49 @@ function Dictionary()
         new Filter("Barriade", (i) => i.T === 6 || i.T === 8 || i.T === 18 || (i.T > 21 && i.T < 28)),
         new Filter("Structure", (i) => i.T === 7)
     ];
-    for (var i = 0; i < this.filters.length; i++) this.filters[i].index = i;
-    this.render = function (ctx)
+    for (var i = 0; i < this.filters.length; i++)
     {
-
+        this.filters[i].index = i;
+        this.filters[i].owner = this;
     }
-    this.updateFilters = function ()
+    this.maxItems = dictionaryItemColumns * dictionaryItemRows;
+    this.updateFilters = function (bypass = false)
     {
-        this.activeItems.slice();
-        for (var i = 0; i < this.items.length; i++)
-            for (var f = 0; f < this.filters.length; f++)
-                if (this.activeFilters[f].enabled && this.activeFilters[f].predicate(this.items[i]))
+        this.activeItems.splice(0);
+        if (this.activeFilters.length === 0 && !bypass)
+        {
+            for (var i = 0; i < this.items.length; i++)
+            {
+                if (this.defaultFilter.predicate(this.items[i]))
                     this.activeItems.push(this.items[i]);
+            }
+            this.loadItems();
+            this.updateDims(Program.context);
+            return;
+        }
+        for (var f = 0; f < this.activeFilters.length; f++)
+            this.activeFilters[f].found = 0;
+        for (var i = 0; i < this.items.length; i++)
+        {
+            var match = false;
+            if (!this.defaultFilter.predicate(this.items[i]))
+                continue;
+            for (var f = 0; f < this.activeFilters.length; f++)
+            {
+                if (this.activeFilters[f].enabled)
+                {
+                    if (this.activeFilters[f].predicate(this.items[i]))
+                    {
+                        this.activeFilters[f].found++;
+                        match = true;
+                    }
+                }
+            }
+            if (match || bypass)
+                this.activeItems.push(this.items[i]);
+        }
+        this.loadItems();
+        this.updateDims(Program.context);
     }
     this.title = "Item Database";
     this.margin = 16;
@@ -2305,7 +2596,9 @@ function Dictionary()
     this.willAnimate = false;
     this.isAnimating = false;
     this.radius = getRadius2(16, 0, 16, 0);
+    this.buttonRadius = getRadius(4);
     this.headerRadius = getRadius2(16, 0, 0, 0);
+    this.footerRadius = getRadius2(0, 0, 16, 0);
     this.inited = false;
     this.updateDims = function (ctx)
     {
@@ -2314,16 +2607,49 @@ function Dictionary()
         this.finalPosX = Program.canvas.width - this.width;
         this.posY = 0;
         this.height = Program.canvas.height;
+        this.footerStartY = this.height - dictionaryFooterSize;
         ctx.font = 'bold ' + dictionaryTitleTextSize + 'px Segoe UI';
         ctx.textAlign = 'left';
-        this.titleYoffset = centerText(ctx, this.title, this.width, dictionaryHeaderSize, dictionaryTitleTextSize).height;
+        this.titleYoffset = centerText(ctx, this.title + " - " + this.activeItems.length + " Items Visible", this.width, dictionaryHeaderSize, dictionaryTitleTextSize).height;
+        if (this.filters.length > 0)
+        {
+            this.filterSectionHeight = (Program.canvas.height / 48 + this.margin / 2) * Math.ceil(this.filters.length / dictionaryFilterColumns);
+            var filterWidth = (this.width - this.margin * (2 + dictionaryFilterColumns)) / (dictionaryFilterColumns);
+            for (var i = 0; i < this.filters.length; i++)
+            {
+                var filter = this.filters[i];
+                filter.width = filterWidth;
+                filter.height = Program.canvas.height / 48;
+                filter.posX = this.margin + (i % dictionaryFilterColumns) * (filterWidth + this.margin);
+                filter.posY = dictionaryHeaderSize + this.margin + ((Program.canvas.height / 48 + this.margin / 2) * Math.floor(i / dictionaryFilterColumns));
+            }
+        }
+        this.gridStartY = dictionaryHeaderSize + this.margin + this.filterSectionHeight + this.margin;
+        this.itemWidth = (this.width - this.margin * (2 + dictionaryItemColumns)) / (dictionaryItemColumns);
+        this.gridHeight = this.height - dictionaryHeaderSize - dictionaryFooterSize - this.margin * 2 - this.filterSectionHeight;
+        for (var i = 0; i < this.maxItems; i++)
+        {
+            var entry = this.entries[i];
+            if (!entry)
+            {
+                entry = new DictionaryEntry(0, null, this);
+                entry.index = i;
+                this.entries.push(entry);
+            }
+            entry.width = this.itemWidth;
+            entry.height = (this.gridHeight / dictionaryItemRows) - this.margin;
+            entry.posX = this.margin + (i % dictionaryItemColumns) * (this.itemWidth + this.margin);
+            entry.posY = dictionaryHeaderSize + this.margin + this.filterSectionHeight + this.margin + ((entry.height + this.margin) * Math.floor(i / dictionaryItemColumns));
+        }
+        this.backX = this.width / 2 - dictionaryButtonSize - this.margin / 2;
+        this.nextX = this.width / 2 + this.margin / 2;
+        this.buttonY = this.footerStartY + (dictionaryFooterSize - dictionaryButtonSize) / 2;
         this.inited = true;
     }
     this.open = function ()
     {
         this.animState = true;
         this.willAnimate = true;
-        this.consumeKeys = true;
         this.inited = false;
         Program.invalidate();
     }
@@ -2331,6 +2657,13 @@ function Dictionary()
     {
         this.animState = false;
         this.willAnimate = true;
+        this.consumeKeys = false;
+        for (var e = 0; e < this.entries.length; e++)
+        {
+            this.entries[e].isHovered = false;
+            this.entries[e].firstHover = false;
+            this.entries[e].hoverProgress = 0;
+        }
         Program.invalidate();
     }
     this.render = function (ctx, dt, rt)
@@ -2360,6 +2693,7 @@ function Dictionary()
                 if (this.currentAnimAlpha >= 1.0)
                 {
                     this.currentAnimAlpha = 1;
+                    this.consumeKeys = true;
                     this.isAnimating = false;
                     this.isOpen = true;
                     this.willAnimate = false;
@@ -2430,12 +2764,311 @@ function Dictionary()
         ctx.fillStyle = "#ffffff";
         ctx.font = 'bold ' + dictionaryTitleTextSize + 'px Segoe UI';
         ctx.textAlign = 'left';
-        var ypos = y + dictionaryHeaderSize;
+        //var ypos = y + dictionaryHeaderSize;
+        ctx.fillText(this.title + " - " + this.activeItems.length + " Items Visible", x + this.margin, y + this.titleYoffset, this.width - this.margin * 2);
+        ctx.fillStyle = "#333333";
+        ctx.fillRect(x + 1, y + dictionaryHeaderSize, this.width - 2, this.filterSectionHeight + this.margin * 2);
+        for (var i = 0; i < this.filters.length; i++)
+            this.filters[i].render(ctx, x, y);
+        for (var i = 0; i < this.entries.length; i++)
+            this.entries[i].render(ctx, x, y);
+        ctx.fillStyle = dictionaryAccent1;
+        roundedRect(ctx, x, this.footerStartY, this.width, dictionaryFooterSize, this.footerRadius, true, false);
+        ctx.fillStyle = this.currentPage === 0 ? dictionaryAccent4Disabled : (this.backHovered ? dictionaryAccent3 : dictionaryAccent2);
+        roundedArrow(ctx, x + this.backX, this.buttonY, dictionaryButtonSize, dictionaryButtonSize, this.buttonRadius, true, false, true);
+        ctx.fillStyle = (this.currentPage + 1) * this.maxItems >= this.activeItems.length ? dictionaryAccent4Disabled : (this.nextHovered ? dictionaryAccent3 : dictionaryAccent2);
+        roundedArrow(ctx, x + this.nextX, this.buttonY, dictionaryButtonSize, dictionaryButtonSize, this.buttonRadius, true, false, false);
+
+    }
+    this.backHovered = false;
+    this.nextHovered = false;
+    this.onClose = function ()
+    {
+    }
+    this.currentAnimAlpha = 0.0;
+    this.animState = false; //false = closing, true = opening
+    this.keyPress = function (event)
+    {
+        if (event.keyCode == 27) // esc
+        {
+            this.close();
+        }
+    }
+    this.onClick = function (x, y)
+    {
+        var filterChange = false;
+        for (var i = 0; i < this.filters.length; i++)
+        {
+            if (this.filters[i].mouseInside(x, y))
+            {
+                this.filters[i].onClick();
+                filterChange |= true;
+            }
+        }
+        if (filterChange)
+        {
+            this.currentPage = 0;
+            this.updateFilters();
+        }
+        else
+        {
+            if (x > this.finalPosX + this.backX - dictionaryButtonSize / 2 && x < this.finalPosX + this.backX + dictionaryButtonSize && y > this.buttonY && y < this.buttonY + dictionaryButtonSize)
+            {
+                if (this.currentPage > 0)
+                {
+                    this.currentPage--;
+                    this.loadItems();
+                    Program.invalidate();
+                }
+                Program.inputConsumed = true;
+                return;
+            }
+            else if (x > this.finalPosX + this.nextX && x < this.finalPosX + this.nextX + dictionaryButtonSize * 1.5 && y > this.buttonY && y < this.buttonY + dictionaryButtonSize)
+            {
+                if ((this.currentPage + 1) * this.maxItems < this.activeItems.length)
+                {
+                    this.currentPage++;
+                    this.loadItems();
+                    Program.invalidate();
+                }
+                Program.inputConsumed = true;
+                return;
+            }
+        }
+    }
+    this.loadItems = function ()
+    {
+        if ((this.currentPage + 1) * this.maxItems >= this.activeItems.length)
+        {
+            this.currentPage = Math.floor((this.activeItems.length === 0 ? 0 : this.activeItems.length - 1) / this.maxItems);
+        }
+        var e = 0;
+        for (var i = this.currentPage * this.maxItems; i < (this.currentPage + 1) * this.maxItems; i++)
+        {
+            if (this.activeItems[i])
+            {
+                this.entries[e].itemID = this.activeItems[i].ItemID;
+                this.entries[e].itemData = this.activeItems[i];
+                this.entries[e].icon = null;
+                this.entries[e].dontRequestImage = false;
+            }
+            else
+            {
+                this.entries[e].itemID = 0;
+                this.entries[e].itemData = null;
+                this.entries[e].icon = null;
+                this.entries[e].dontRequestImage = false;
+            }
+            e++;
+        }
+    }
+    this.onMouseMoved = function (x, y)
+    {
+        if (!this.consumeKeys || this.isAnimating) return;
+        if (x > this.finalPosX + this.backX - dictionaryButtonSize / 2 && x < this.finalPosX + this.backX + dictionaryButtonSize && y > this.buttonY && y < this.buttonY + dictionaryButtonSize)
+        {
+            this.backHovered = true;
+            this.nextHovered = false;
+            Program.moveConsumed = true;
+            Program.invalidate();
+        }
+        else if (x > this.finalPosX + this.nextX && x < this.finalPosX + this.nextX + dictionaryButtonSize * 1.5 && y > this.buttonY && y < this.buttonY + dictionaryButtonSize)
+        {
+            this.nextHovered = true;
+            this.backHovered = false;
+            Program.moveConsumed = true;
+            Program.invalidate();
+        }
+        if (this.nextHovered || this.backHovered)
+        {
+            this.nextHovered = false;
+            this.backHovered = false;
+            Program.invalidate();
+        }
+        for (var e = 0; e < this.entries.length; e++)
+        {
+            if (x > this.finalPosX + this.entries[e].posX && x < this.finalPosX + this.entries[e].posX + this.entries[e].width &&
+                y > this.posY + this.entries[e].posY && y < this.posY + this.entries[e].posY + this.entries[e].height)
+            {
+                this.entries[e].onHover(x, y);
+                this.entries[e].isHovered = true;
+                this.moveConsumed = true;
+                Program.invalidate();
+            } else
+            {
+                if (this.entries[e].isHovered)
+                    Program.invalidate();
+                this.entries[e].isHovered = false;
+            }
+        }
+    }
+}
+const wikiIconSize = 32;
+const wikiFieldHeight = 48;
+const maxFieldsPerRow = 6;
+function Wiki()
+{
+    this.title = "WIKI";
+    this.message = "DESC";
+    this.wrappedMessage = null;
+    this.margin = 16;
+    this.darkenBackground = true;
+    this.consumeKeys = false;
+    this.fields = [];
+    this.icons = [];
+    this.isOpen = false;
+    this.reopenToDictionary = false;
+    this.willAnimate = false;
+    this.isAnimating = false;
+    this.radius = getRadius(16);
+    this.headerRadius = getRadius2(16, 16, 0, 0);
+    this.inited = false;
+    this.currentItem = null;
+    this.updateDims = function (ctx)
+    {
+        this.width = Program.canvas.width / 1.5;
+        this.posX = Program.canvas.width / 2 - this.width / 2;
+        this.startPosY = Program.canvas.height * 1.05;
+        ctx.font = popupDescTextSize.toString() + 'px Segoe UI';
+        ctx.textAlign = 'left';
+        this.wrappedMessage = wrapText(ctx, this.message, this.width - this.margin * 2, popupDescTextSize);
+        this.textHeight = 0;
+        for (var i = 0; i < this.wrappedMessage.length; i++)
+            this.textHeight += this.wrappedMessage[i].height + popupDescLineSpacing;
+        this.height = popupHeaderHeight + this.margin + this.textHeight + this.margin + this.getContentHeight() + this.margin;
+        this.finalPosY = Program.canvas.height / 2 - this.height / 2;
+        ctx.font = 'bold ' + popupTitleTextSize + 'px Segoe UI';
+        ctx.textAlign = 'left';
+        this.titleYoffset = centerText(ctx, this.title, this.width, popupHeaderHeight, popupTitleTextSize).height;
+        this.contentYStart = popupHeaderHeight + this.margin + this.textHeight + this.margin;
+        this.inited = true;
+    }
+    this.open = function ()
+    {
+        this.animState = true;
+        this.willAnimate = true;
+        this.inited = false;
+        Program.invalidate();
+    }
+    this.close = function ()
+    {
+        this.animState = false;
+        this.willAnimate = true;
+        this.consumeKeys = false;
+        Program.invalidate();
+        if (this.reopenToDictionary && Program.dictionary)
+            Program.dictionary.open();
+    }
+    this.render = function (ctx, dt, rt)
+    {
+        if (!this.inited)
+            this.updateDims(ctx);
+        if (this.willAnimate)
+        {
+            this.willAnimate = false;
+            this.isAnimating = true;
+            if (this.animState)
+            {
+                this.currentAnimAlpha = 0;
+                this.renderAt(ctx, this.posX, this.startPosY, 0.0);
+            }
+            else
+            {
+                this.currentAnimAlpha = 1.0;
+                this.renderAt(ctx, this.posX, this.finalPosY, 1.0);
+            }
+            return true;
+        }
+        else if (this.isAnimating)
+        {
+            if (this.animState)
+            {
+                if (this.currentAnimAlpha >= 1.0)
+                {
+                    this.currentAnimAlpha = 1;
+                    this.isAnimating = false;
+                    this.isOpen = true;
+                    this.willAnimate = false;
+                    this.renderAt(ctx, this.posX, this.finalPosY, 1.0);
+                    this.consumeKeys = true;
+                    return false;
+                }
+                else
+                {
+                    this.renderAt(ctx, this.posX, this.lerp(), this.currentAnimAlpha);
+                    this.currentAnimAlpha += dt / popupAnimTimeSec;
+                    return true;
+                }
+            }
+            else
+            {
+                if (this.currentAnimAlpha <= 0)
+                {
+                    this.currentAnimAlpha = 0;
+                    this.isAnimating = false;
+                    this.isOpen = false;
+                    this.willAnimate = false;
+                    this.onClose();
+                    return false;
+                }
+                else
+                {
+                    this.renderAt(ctx, this.posX, this.lerp(), this.currentAnimAlpha);
+                    this.currentAnimAlpha -= dt / popupAnimTimeSec;
+                    return true;
+                }
+            }
+        }
+        else if (this.isOpen)
+        {
+            this.renderAt(ctx, this.posX, this.finalPosY, 1.0);
+        }
+        return this.isAnimating;
+    }
+    this.exp = function (alpha)
+    {
+        return Math.pow(expConst, Math.pow(expConst, 0.5 * alpha) * alpha - 1) - Math.pow(expConst, -1);
+    }
+    this.lerp = function ()
+    {
+        if (this.animState)
+            return (this.startPosY - this.finalPosY) * (1 - (this.exp(this.currentAnimAlpha))) + this.finalPosY;
+        else
+            return (this.startPosY - this.finalPosY) * (this.exp(1 - this.currentAnimAlpha)) + this.finalPosY;
+    }
+    this.renderAt = function (ctx, x, y, bkgrAlpha)
+    {
+        if (bkgrAlpha > 0)
+        {
+            ctx.globalAlpha = bkgrAlpha * popupBkgrTransparency;
+            ctx.fillStyle = "#000000";
+            ctx.fillRect(0, 0, Program.canvas.width, Program.canvas.height);
+        }
+        ctx.globalAlpha = 1.0;
+        if (y >= Program.canvas.height) return;
+        ctx.fillStyle = popupBackground;
+        ctx.strokeStyle = popupAccent1;
+        roundedRect(ctx, x, y, this.width, this.height, this.radius, true, true);
+        ctx.strokeStyle = "#000000";
+        ctx.fillStyle = popupAccent1;
+        roundedRect(ctx, x, y, this.width, popupHeaderHeight, this.headerRadius, true, false);
+        ctx.fillStyle = "#ffffff";
+        ctx.font = 'bold ' + popupTitleTextSize + 'px Segoe UI';
+        ctx.textAlign = 'left';
+        var ypos = y + popupHeaderHeight;
         ctx.fillText(this.title, x + this.margin, y + this.titleYoffset, this.width - this.margin * 2);
+        ctx.font = popupDescTextSize.toString() + 'px Segoe UI';
+        ypos += this.margin;
+        for (var i = 0; i < this.wrappedMessage.length; i++)
+        {
+            ypos += this.wrappedMessage[i].height;
+            ctx.fillText(this.wrappedMessage[i].text, x + this.margin, ypos, this.width - this.margin * 2);
+            if (i != this.wrappedMessage.length - 1) ypos += popupDescLineSpacing;
+        }
+        this.renderCustom(ctx, ypos);
     }
     this.onClose = function ()
     {
-        this.consumeKeys = false;
     }
     this.currentAnimAlpha = 0.0;
     this.animState = false; //false = closing, true = opening
@@ -2452,6 +3085,513 @@ function Dictionary()
     }
     this.onMouseMoved = function (x, y)
     {
-
+        if (Program.moveConsumed)
+            Program.invalidate();
+    }
+    this.loadItem = function (itemData)
+    {
+        this.currentItem = itemData;
+        this.title = itemData.LocalizedName;
+        this.message = itemData.LocalizedDescription;
+        this.updateDims(Program.context);
+        Program.invalidate();
+    }
+    this.getContentHeight = function (ctx)
+    {
+        if (this.currentItem === null) return;
+        var type = this.currentItem.T;
+        ypos = this.renderBase(ctx, ypos, this.currentItem.T === 0);
+        switch (type) 
+        {
+            case 0:
+            case 31:
+            case 32:
+            case 34:
+            case 36:
+            case 37:
+            case 38:
+            case 50:
+                break;
+            case 1: // gun
+                ypos = this.renderUseable(ctx, ypos, false, true);
+                ypos = this.renderGun(ctx, ypos, true, true);
+                break;
+            case 2: // magazine
+                ypos = this.renderAttachment(ctx, ypos, false, true, true);
+                ypos = this.renderMagazine(ctx, ypos, true, true);
+                break;
+            case 3: // throwable
+                ypos = this.renderUseable(ctx, ypos, false, true);
+                ypos = this.renderThrowable(ctx, ypos, true, true);
+                break;
+            case 4: // clothing
+                ypos = this.renderClothing(ctx, ypos, true, true);
+                break;
+            case 45:
+            case 46:
+            case 48:
+            case 5: // storage clothing
+                ypos = this.renderClothing(ctx, ypos, false, true);
+                ypos = this.renderStorageClothing(ctx, ypos, true, true);
+                break;
+            case 6: // barricade
+                ypos = this.renderBarricade(ctx, ypos, true, true);
+                break;
+            case 7: // structure
+                ypos = this.renderStructure(ctx, ypos, true, true);
+                break;
+            case 8: // trap
+                ypos = this.renderBarricade(ctx, ypos, false, true);
+                ypos = this.renderTrap(ctx, ypos, true, true);
+                break;
+            case 9: // attachment
+                ypos = this.renderAttachment(ctx, ypos, true, true);
+                break;
+            case 10: // sight
+                ypos = this.renderAttachment(ctx, ypos, false, true);
+                ypos = this.renderSight(ctx, ypos, true, true);
+                break;
+            case 11: // grip
+                ypos = this.renderAttachment(ctx, ypos, false, true);
+                ypos = this.renderGrip(ctx, ypos, true, true);
+                break;
+            case 12: // tactical
+                ypos = this.renderAttachment(ctx, ypos, false, true);
+                ypos = this.renderTactical(ctx, ypos, true, true);
+                break;
+            case 13: // barrel
+                ypos = this.renderAttachment(ctx, ypos, false, true);
+                ypos = this.renderBarrel(ctx, ypos, true, true);
+                break;
+            case 41: // food
+            case 42: // medical
+            case 43: // water
+            case 14: // consumable
+                ypos = this.renderUseable(ctx, ypos, false, true);
+                ypos = this.renderConsumable(ctx, ypos, true, true);
+                break;
+            case 15: // consumable
+                ypos = this.renderUseable(ctx, ypos, true, true);
+                break;
+            case 16: // fuel
+                ypos = this.renderFuel(ctx, ypos, true, true);
+                break;
+            case 17: // optic (binos)
+                ypos = this.renderZoom(ctx, ypos, true, true);
+                break;
+            case 18: // charge
+                ypos = this.renderBarricade(ctx, ypos, false, true);
+                ypos = this.renderCharge(ctx, ypos, true, true);
+                break;
+            case 19: // refill
+                ypos = this.renderRefill(ctx, ypos, true, true);
+                break;
+            case 20: // map
+                ypos = this.renderMap(ctx, ypos, true, true);
+                break;
+            case 21: // handcuff
+                ypos = this.renderHandcuff(ctx, ypos, true, true);
+                break;
+            case 22: // beacon
+                ypos = this.renderBarricade(ctx, ypos, false, true);
+                ypos = this.renderBeacon(ctx, ypos, true, true);
+                break;
+            case 23: // farm
+                ypos = this.renderBarricade(ctx, ypos, false, true);
+                ypos = this.renderFarm(ctx, ypos, true, true);
+                break;
+            case 24: // generator
+                ypos = this.renderBarricade(ctx, ypos, false, true);
+                ypos = this.renderGenerator(ctx, ypos, true, true);
+                break;
+            case 25: // library
+                ypos = this.renderBarricade(ctx, ypos, false, true);
+                ypos = this.renderLibrary(ctx, ypos, true, true);
+                break;
+            case 26: // storage
+                ypos = this.renderBarricade(ctx, ypos, false, true);
+                ypos = this.renderStorage(ctx, ypos, true, true);
+                break;
+            case 27: // tank
+                ypos = this.renderBarricade(ctx, ypos, false, true);
+                ypos = this.renderTank(ctx, ypos, true, true);
+                break;
+            case 28: // workshop box
+                ypos = this.renderBarricade(ctx, ypos, false, true);
+                ypos = this.renderWorkshopBox(ctx, ypos, true, true);
+                break;
+            case 50:
+            case 29: // non-storage clothes
+                ypos = this.renderClothing(ctx, ypos, false, true);
+                ypos = this.renderGear(ctx, ypos, true, true);
+                break;
+            case 30: // cloud
+                ypos = this.renderCloud(ctx, ypos, true, true);
+                break;
+            case 33: // fisher
+                ypos = this.renderFisher(ctx, ypos, true, true);
+                break;
+            case 35: // workshop key
+                ypos = this.renderKey(ctx, ypos, true, true);
+                break;
+            case 39: // tire
+                ypos = this.renderTire(ctx, ypos, true, true);
+                break;
+            case 40: // melee
+                ypos = this.renderUseable(ctx, ypos, false, true);
+                ypos = this.renderMelee(ctx, ypos, true, true);
+                break;
+            case 44: // handcuff key
+                ypos = this.renderHandcuffKey(ctx, ypos, true);
+                break;
+            case 47: // shirt
+                ypos = this.renderClothing(ctx, ypos, false, true);
+                ypos = this.renderStorageClothing(ctx, ypos, false, true);
+                ypos = this.renderShirt(ctx, ypos, true, true);
+                break;
+            case 49: // glasses
+                ypos = this.renderClothing(ctx, ypos, false, true);
+                ypos = this.renderGear(ctx, ypos, false, true);
+                ypos = this.renderGlasses(ctx, ypos, true, true);
+                break;
+            case 51: // mask
+                ypos = this.renderClothing(ctx, ypos, false, true);
+                ypos = this.renderGear(ctx, ypos, false, true);
+                ypos = this.renderMask(ctx, ypos, true, true);
+                break;
+        }
+        return ypos;
+    }
+    this.renderCustom = function (ctx, ypos)
+    {
+        var type = this.currentItem.T;
+        ypos = this.renderBase(ctx, ypos, this.currentItem.T === 0);
+        switch (type) 
+        {
+            case 0:
+            case 31:
+            case 32:
+            case 34:
+            case 36:
+            case 37:
+            case 38:
+            case 50:
+                break;
+            case 1: // gun
+                ypos = this.renderUseable(ctx, ypos);
+                ypos = this.renderGun(ctx, ypos, true);
+                break;
+            case 2: // magazine
+                ypos = this.renderAttachment(ctx, ypos);
+                ypos = this.renderMagazine(ctx, ypos, true);
+                break;
+            case 3: // throwable
+                ypos = this.renderUseable(ctx, ypos);
+                ypos = this.renderThrowable(ctx, ypos, true);
+                break;
+            case 4: // clothing
+                ypos = this.renderClothing(ctx, ypos, true);
+                break;
+            case 45:
+            case 46:
+            case 48:
+            case 5: // storage clothing
+                ypos = this.renderClothing(ctx, ypos);
+                ypos = this.renderStorageClothing(ctx, ypos, true);
+                break;
+            case 6: // barricade
+                ypos = this.renderBarricade(ctx, ypos, true);
+                break;
+            case 7: // structure
+                ypos = this.renderStructure(ctx, ypos, true);
+                break;
+            case 8: // trap
+                ypos = this.renderBarricade(ctx, ypos);
+                ypos = this.renderTrap(ctx, ypos, true);
+                break;
+            case 9: // attachment
+                ypos = this.renderAttachment(ctx, ypos, true);
+                break;
+            case 10: // sight
+                ypos = this.renderAttachment(ctx, ypos);
+                ypos = this.renderSight(ctx, ypos, true);
+                break;
+            case 11: // grip
+                ypos = this.renderAttachment(ctx, ypos);
+                ypos = this.renderGrip(ctx, ypos, true);
+                break;
+            case 12: // tactical
+                ypos = this.renderAttachment(ctx, ypos);
+                ypos = this.renderTactical(ctx, ypos, true);
+                break;
+            case 13: // barrel
+                ypos = this.renderAttachment(ctx, ypos);
+                ypos = this.renderBarrel(ctx, ypos, true);
+                break;
+            case 41: // food
+            case 42: // medical
+            case 43: // water
+            case 14: // consumable
+                ypos = this.renderUseable(ctx, ypos);
+                ypos = this.renderConsumable(ctx, ypos, true);
+                break;
+            case 15: // consumable
+                ypos = this.renderUseable(ctx, ypos, true);
+                break;
+            case 16: // fuel
+                ypos = this.renderFuel(ctx, ypos, true);
+                break;
+            case 17: // optic (binos)
+                ypos = this.renderZoom(ctx, ypos, true);
+                break;
+            case 18: // charge
+                ypos = this.renderBarricade(ctx, ypos);
+                ypos = this.renderCharge(ctx, ypos, true);
+                break;
+            case 19: // refill
+                ypos = this.renderRefill(ctx, ypos, true);
+                break;
+            case 20: // map
+                ypos = this.renderMap(ctx, ypos, true);
+                break;
+            case 21: // handcuff
+                ypos = this.renderHandcuff(ctx, ypos, true);
+                break;
+            case 22: // beacon
+                ypos = this.renderBarricade(ctx, ypos);
+                ypos = this.renderBeacon(ctx, ypos, true);
+                break;
+            case 23: // farm
+                ypos = this.renderBarricade(ctx, ypos);
+                ypos = this.renderFarm(ctx, ypos, true);
+                break;
+            case 24: // generator
+                ypos = this.renderBarricade(ctx, ypos);
+                ypos = this.renderGenerator(ctx, ypos, true);
+                break;
+            case 25: // library
+                ypos = this.renderBarricade(ctx, ypos);
+                ypos = this.renderLibrary(ctx, ypos, true);
+                break;
+            case 26: // storage
+                ypos = this.renderBarricade(ctx, ypos);
+                ypos = this.renderStorage(ctx, ypos, true);
+                break;
+            case 27: // tank
+                ypos = this.renderBarricade(ctx, ypos);
+                ypos = this.renderTank(ctx, ypos, true);
+                break;
+            case 28: // workshop box
+                ypos = this.renderBarricade(ctx, ypos);
+                ypos = this.renderWorkshopBox(ctx, ypos, true);
+                break;
+            case 50:
+            case 29: // non-storage clothes
+                ypos = this.renderClothing(ctx, ypos);
+                ypos = this.renderGear(ctx, ypos, true);
+                break;
+            case 30: // cloud
+                ypos = this.renderCloud(ctx, ypos, true);
+                break;
+            case 33: // fisher
+                ypos = this.renderFisher(ctx, ypos, true);
+                break;
+            case 35: // workshop key
+                ypos = this.renderKey(ctx, ypos, true);
+                break;
+            case 39: // tire
+                ypos = this.renderTire(ctx, ypos, true);
+                break;
+            case 40: // melee
+                ypos = this.renderUseable(ctx, ypos);
+                ypos = this.renderMelee(ctx, ypos, true);
+                break;
+            case 44: // handcuff key
+                ypos = this.renderHandcuffKey(ctx, ypos, true);
+                break;
+            case 47: // shirt
+                ypos = this.renderClothing(ctx, ypos);
+                ypos = this.renderStorageClothing(ctx, ypos);
+                ypos = this.renderShirt(ctx, ypos, true);
+                break;
+            case 49: // glasses
+                ypos = this.renderClothing(ctx, ypos);
+                ypos = this.renderGear(ctx, ypos);
+                ypos = this.renderGlasses(ctx, ypos, true);
+                break;
+            case 51: // mask
+                ypos = this.renderClothing(ctx, ypos);
+                ypos = this.renderGear(ctx, ypos);
+                ypos = this.renderMask(ctx, ypos, true);
+                break;
+        }
+        return ypos;
+    }
+    this.renderBase = function (ctx, ypos, final = false, onlyCalc = false)
+    {
+        var sizeTxt = `Size: ${this.currentItem.SizeX}, ${this.currentItem.SizeY}`;
+        var typeTxt = `Type: ${this.currentItem.Type}`;
+        var rarityTxt = `Type: ${this.currentItem.Rarity}`;
+        var len1 = ctx.measureText(sizeTxt);
+        var len2 = ctx.measureText(typeTxt);
+        var len3 = ctx.measureText(rarityTxt);
+        if (!onlyCalc)
+        {
+            ctx.fillStyle = "#ffffff";
+            ctx.font = popupDescTextSize.toString() + 'px Segoe UI';
+        }
+        return ypos;
+    }
+    this.renderUseable = function (ctx, ypos, final = false, onlyCalc = false)
+    {
+        return ypos;
+    }
+    this.renderGun = function (ctx, ypos, final = false, onlyCalc = false)
+    {
+        return ypos;
+    }
+    this.renderAttachment = function (ctx, ypos, final = false, onlyCalc = false)
+    {
+        return ypos;
+    }
+    this.renderMagazine = function (ctx, ypos, final = false, onlyCalc = false)
+    {
+        return ypos;
+    }
+    this.renderThrowable = function (ctx, ypos, final = false, onlyCalc = false)
+    {
+        return ypos;
+    }
+    this.renderClothing = function (ctx, ypos, final = false, onlyCalc = false)
+    {
+        return ypos;
+    }
+    this.renderStorageClothing = function (ctx, ypos, final = false, onlyCalc = false)
+    {
+        return ypos;
+    }
+    this.renderBarricade = function (ctx, ypos, final = false, onlyCalc = false)
+    {
+        return ypos;
+    }
+    this.renderStructure = function (ctx, ypos, final = false, onlyCalc = false)
+    {
+        return ypos;
+    }
+    this.renderTrap = function (ctx, ypos, final = false, onlyCalc = false)
+    {
+        return ypos;
+    }
+    this.renderSight = function (ctx, ypos, final = false, onlyCalc = false)
+    {
+        return ypos;
+    }
+    this.renderGrip = function (ctx, ypos, final = false, onlyCalc = false)
+    {
+        return ypos;
+    }
+    this.renderTactical = function (ctx, ypos, final = false, onlyCalc = false)
+    {
+        return ypos;
+    }
+    this.renderBarrel = function (ctx, ypos, final = false, onlyCalc = false)
+    {
+        return ypos;
+    }
+    this.renderConsumable = function (ctx, ypos, final = false, onlyCalc = false)
+    {
+        return ypos;
+    }
+    this.renderFuel = function (ctx, ypos, final = false, onlyCalc = false)
+    {
+        return ypos;
+    }
+    this.renderZoom = function (ctx, ypos, final = false, onlyCalc = false)
+    {
+        return ypos;
+    }
+    this.renderCharge = function (ctx, ypos, final = false, onlyCalc = false)
+    {
+        return ypos;
+    }
+    this.renderRefill = function (ctx, ypos, final = false, onlyCalc = false)
+    {
+        return ypos;
+    }
+    this.renderMap = function (ctx, ypos, final = false, onlyCalc = false)
+    {
+        return ypos;
+    }
+    this.renderHandcuff = function (ctx, ypos, final = false, onlyCalc = false)
+    {
+        return ypos;
+    }
+    this.renderBeacon = function (ctx, ypos, final = false, onlyCalc = false)
+    {
+        return ypos;
+    }
+    this.renderFarm = function (ctx, ypos, final = false, onlyCalc = false)
+    {
+        return ypos;
+    }
+    this.renderGenerator = function (ctx, ypos, final = false, onlyCalc = false)
+    {
+        return ypos;
+    }
+    this.renderLibrary = function (ctx, ypos, final = false, onlyCalc = false)
+    {
+        return ypos;
+    }
+    this.renderStorage = function (ctx, ypos, final = false, onlyCalc = false)
+    {
+        return ypos;
+    }
+    this.renderTank = function (ctx, ypos, final = false, onlyCalc = false)
+    {
+        return ypos;
+    }
+    this.renderWorkshopBox = function (ctx, ypos, final = false, onlyCalc = false)
+    {
+        return ypos;
+    }
+    this.renderGear = function (ctx, ypos, final = false, onlyCalc = false)
+    {
+        return ypos;
+    }
+    this.renderCloud = function (ctx, ypos, final = false, onlyCalc = false)
+    {
+        return ypos;
+    }
+    this.renderFisher = function (ctx, ypos, final = false, onlyCalc = false)
+    {
+        return ypos;
+    }
+    this.renderKey = function (ctx, ypos, final = false, onlyCalc = false)
+    {
+        return ypos;
+    }
+    this.renderTire = function (ctx, ypos, final = false, onlyCalc = false)
+    {
+        return ypos;
+    }
+    this.renderMelee = function (ctx, ypos, final = false, onlyCalc = false)
+    {
+        return ypos;
+    }
+    this.renderHandcuffKey = function (ctx, ypos, final = false, onlyCalc = false)
+    {
+        return ypos;
+    }
+    this.renderShirt = function (ctx, ypos, final = false, onlyCalc = false)
+    {
+        return ypos;
+    }
+    this.renderGlasses = function (ctx, ypos, final = false, onlyCalc = false)
+    {
+        return ypos;
+    }
+    this.renderMask = function (ctx, ypos, final = false, onlyCalc = false)
+    {
+        return ypos;
     }
 }

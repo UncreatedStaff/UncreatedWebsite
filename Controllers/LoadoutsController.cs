@@ -102,9 +102,7 @@ namespace Uncreated.Website.Controllers
             if (data == null) return;
             lock (ItemDataManager.ItemRegistry)
             {
-                if (ItemDataManager.ItemRegistry.ContainsKey(data.ItemID))
-                    ItemDataManager.ItemRegistry[data.ItemID] = data;
-                else ItemDataManager.ItemRegistry.Add(data.ItemID, data);
+                ItemDataManager.ItemRegistry.AddOrUpdate(data.ItemID, data);
             }
         }
         internal static readonly NetCall<ushort[]> RequestItemInfos = new NetCall<ushort[]>(1121);
@@ -117,9 +115,7 @@ namespace Uncreated.Website.Controllers
                 for (int i = 0; i < data.Length; i++)
                 {
                     if (data[i] == null) continue;
-                    if (ItemDataManager.ItemRegistry.ContainsKey(data[i].ItemID))
-                        ItemDataManager.ItemRegistry[data[i].ItemID] = data[i];
-                    else ItemDataManager.ItemRegistry.Add(data[i].ItemID, data[i]);
+                    ItemDataManager.ItemRegistry.AddOrUpdate(data[i].ItemID, data[i]);
                 }
             }
         }

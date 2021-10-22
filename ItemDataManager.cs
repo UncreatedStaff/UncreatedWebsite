@@ -11,7 +11,7 @@ namespace Uncreated.Website
 {
     public static class ItemDataManager
     {
-        public static Dictionary<ushort, ItemData> ItemRegistry = new Dictionary<ushort, ItemData>();
+        public static CachedRegistry ItemRegistry = new CachedRegistry();
         public static async Task<ItemData> GetItem(ushort ID)
         {
             lock (ItemRegistry)
