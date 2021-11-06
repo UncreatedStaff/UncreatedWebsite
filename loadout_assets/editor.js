@@ -29,6 +29,7 @@ const Program = {
     context: null,
     header: null,
     wiki: null,
+    url: null,
     start: function () 
     {
         document.onkeydown = keyPress;
@@ -50,10 +51,15 @@ const Program = {
         this.savedPopups =
             [
             new Popup("Preload Kit", "Start your loadout off with a kit that's already in-game. To use someone's loadout, type <their Steam64 ID>_<a-z in the order they were made> (for example 76561198267927009_a).",
-                [new PopupButton("LOAD", 13, loadKit), new PopupButton("CANCEL", 27, closePopup)],
+                [new PopupButton("LOAD", 13, loadKitBtn), new PopupButton("CANCEL", 27, closePopup)],
                 [new PopupTextbox("Kit ID", 0, "usrif1")]),
             new Popup("Connection Error", "It seems like the server is not connected the the web server properly. If there isn't planned matenence on the server, contact one of the Directors to check on this for you.",
-                [new PopupButton("CLOSE", 13, navigateToHomePage)])
+                [new PopupButton("CLOSE", 13, navigateToHomePage)]),
+            new Popup("Save Kit", "Fill in the below information to submit your kit for verification.",
+                [new PopupButton("SAVE", 13, saveKit), new PopupButton("CANCEL", 27, closePopup)],
+                [new PopupTextbox("Username", 0, ""), new PopupTextbox("Steam64", 1, ""),
+                    new PopupTextbox("Kit Name", 0, ""), new PopupTextbox("Class", 0, "")],
+                [new DualSelectWidget("USA", "RUSSIA")], true)
             ];
         this.pages = new Pages(25, 25);
         this.pages.addSlot(PAGES.PRIMARY, "Primary", tileSize * 6, tileSize * 4, true, (item) => item.item.SlotType == 1 || item.item.SlotType == 2 || item.item.SlotType == 4);
@@ -72,6 +78,7 @@ const Program = {
         this.interval = setInterval(tickInt, 0.1);
         this.updateScale();
         this.tick();
+        this.url = new URLSearchParams(window.location.search);
         var response = call({}, "PingWarfare").done(() =>
         {
             if (!response.responseJSON.State)
@@ -103,6 +110,11 @@ const Program = {
                         Program.dictionary.updateFilters(true);
                         if (!Program.moveConsumed)
                             Program.invalidate();
+                        if (this.url.has("kit"))
+                        {
+                            var kitname = this.url.get("kit");
+                            loadKit(kitname);
+                        }
                     }
                 });
             }
@@ -146,16 +158,23 @@ const Program = {
     {
         if (this.isLoading) return;
         this.inputConsumed = false;
-        if (Program.popup != null && Program.popup.consumeKeys)
-            Program.popup.onClick(x, y);
-        else
+        if (Program.popup != null && Program.popup.consumeKeys && Program.popup.isOpen)
         {
-            this.pages.onClick(x, y);
+            Program.popup.onClick(x, y);
+            this.inputConsumed = true;
         }
-        if (!this.inputConsumed && this.dictionary)
+        else if (this.dictionary && this.dictionary.isOpen)
+        {
             this.dictionary.onClick(x, y);
-        if (!this.inputConsumed && this.wiki)
+            this.inputConsumed = true;
+        }
+        else if (this.wiki && this.wiki.isOpen)
+        {
             this.wiki.onClick(x, y);
+            this.inputConsumed = true;
+        }
+        if (!this.inputConsumed)
+            this.pages.onClick(x, y);
         if (this.inputConsumed)
             this.tick();
     },
@@ -166,7 +185,7 @@ const Program = {
         this.moveConsumed = false;
         if (Program.popup != null && Program.popup.consumeKeys)
             Program.popup.onMouseMoved(x, y);
-        else
+        else if (this.pages)
             this.pages.onMouseMoved(x, y);
         if (!this.moveConsumed && this.dictionary)
             this.dictionary.onMouseMoved(x, y);
@@ -227,21 +246,25 @@ function onMouseMove(e)
         Program.onMouseMoved(e.clientX - bounds.left, e.clientY - bounds.top);
     }
 }
-function loadKit(btn)
+function loadKitBtn(btn)
+{
+    var kitname = btn.owner.textboxes[0];
+    if (kitname == null || kitname.text.length == 0) return false;
+    else kitname = btn.owner.textboxes[0].text;
+    return loadKit(kitname);
+}
+function loadKit(kitname)
 {
     var response = call({}, "PingWarfare").done(() =>
     {
         if (!response.responseJSON.State)
         {
-            console.log("Not connected to warfare.")
+            console.warn("Not connected to warfare.")
             Program.popup.close();
             Program.popup = Program.savedPopups[1];
             Program.popup.open();
             return;
         }
-        var kitname = btn.owner.textboxes[0];
-        if (kitname == null || kitname.text.length == 0) kitname = "usrif2";
-        else kitname = btn.owner.textboxes[0].text;
         var kitinfo = call({ kitName: kitname }, "GetKit").done(() =>
         {
             if (kitinfo.responseJSON.Success)
@@ -252,10 +275,15 @@ function loadKit(btn)
                 Program.pages.loadKit(kitinfo);
             } else
             {
-                console.log("Failed to receive kit info");
+                console.warn("Failed to receive kit info");
             }
         });
     });
+    return response;
+}
+function saveKit(btn)
+{
+    console.log(btn);
 }
 function tick(ctx, deltaTime, realtime, ticks, canvas)
 {
@@ -386,6 +414,8 @@ function Pages(posX = 0, posY = 0)
         {
             this.pages[i].page.renderBackground(ctx);
         }
+        if (this.pickedItem != null && this.pickedItem.isOrphan)
+            this.pickedItem.render(ctx);
         for (var i = 0; i < this.pages.length; i++)
         {
             this.pages[i].page.renderForeground(ctx);
@@ -554,7 +584,7 @@ function Pages(posX = 0, posY = 0)
                     {
                         if (!this.pages[p].page.addItem(new Item(kititem.ID, kititem.x, kititem.y, data.SizeX,
                             data.SizeY, kititem.rotation, data.LocalizedName, data.LocalizedDescription, p, data)))
-                            console.log(`${kititem.ID} failed to add ^^`);
+                            console.warn(`${kititem.ID} failed to add ^^`);
                         break;
                     }
                 }
@@ -584,96 +614,128 @@ function Pages(posX = 0, posY = 0)
     }
     this.propogateRotate = function ()
     {
-        for (var p = 0; p < this.pages.length; p++)
-        {
-            for (var i = 0; i < this.pages[p].page.items.length; i++)
-            {
-                if (this.pages[p].page.items[i].isPicked)
-                {
-                    this.pages[p].page.items[i].rotateOnce();
-                    return;
-                }
-            }
-        }
+        if (this.pickedItem != null)
+            this.pickedItem.rotateOnce();
     }
     this.iconCache = new Map();
     this.moveItem = function (item, x, y, rotation, page, sizes)
     {
         if (!this.verifyMove(item, x, y, rotation, page, sizes))
-        {
             return false;
-        }
         if (item.page != page)
         {
-            var pg = this.pages[page].page;
-            var oldpg = this.pages[item.page].page;
-            for (var i = 0; i < oldpg.items.length; i++) // clear from other page
+            if (item.page < 0)
             {
-                var l_item = oldpg.items[i];
-                if (l_item.x == item.x && l_item.y == item.y) oldpg.items.splice(i, 1);
-            }
-            if (pg.type === 1) // slot
-            {
+                var pg = this.pages[page].page;
                 item.x = x;
                 item.y = y;
-                item.tileSizeX = pg.tileSizeX;
-                item.tileSizeY = pg.tileSizeY;
-                item.inSlot = true;
-                item.rotation = 0;
-                item.sizes = item.getSizes(0);
-                item.pendingRotation = 0;
-                item.pendingSizes = item.sizes;
                 item.page = page;
+                item.isOrphan = false;
                 pg.items.push(item);
-                if (!item.item) return true;
-                var newPageID = NaN;
-                if (pg.pageID == PAGES.C_SHIRT) // shirt
+                if (pg.type === 1)
                 {
-                    newPageID = PAGES.SHIRT;
-                }
-                else if (pg.pageID === PAGES.C_PANTS) // pants
-                {
-                    newPageID = PAGES.PANTS;
-                }
-                else if (pg.pageID === PAGES.C_VEST) // vest
-                {
-                    newPageID = PAGES.VEST;
-                }
-                else if (pg.pageID === PAGES.C_BACKPACK) // backpack
-                {
-                    newPageID = PAGES.BACKPACK;
-                }
-                if (!isNaN(newPageID))
-                {
-                    var newpage = this.addPage(newPageID, item.item.Width, item.item.Height, item.item.LocalizedName, tileSize, true, null);
-                    console.log(newpage);
-                    newpage.page.slotOwner = pg.pageID;
-                    pg.pageChild = newPageID;
-                    this.sortPages();
-                    this.updateScale();
-                }
-                return true;
-            }
-            else // page
-            {
-                item.tileSizeX = pg.tileSize;
-                item.tileSizeY = pg.tileSize;
-                item.page = page;
-                item.inSlot = false;
-                pg.items.push(item);
-                if (oldpg.type === 1 && oldpg.pageChild && oldpg.pageChild != pg.pageID)
-                {
-                    console.log("removing");
-                    for (var i = 0; i < this.pages.length; i++)
+                    item.inSlot = true;
+                    item.rotation = 0;
+                    item.tileSizeX = pg.tileSizeX;
+                    item.tileSizeY = pg.tileSizeY;
+                    item.sizes = item.getSizes(0);
+                    item.pendingRotation = 0;
+                    item.pendingSizes = item.sizes;
+                    item.page = page;
+                    if (!item.item) return true;
+                    var newPageID = NaN;
+                    if (pg.pageID == PAGES.C_SHIRT) // shirt
+                        newPageID = PAGES.SHIRT;
+                    else if (pg.pageID === PAGES.C_PANTS) // pants
+                        newPageID = PAGES.PANTS;
+                    else if (pg.pageID === PAGES.C_VEST) // vest
+                        newPageID = PAGES.VEST;
+                    else if (pg.pageID === PAGES.C_BACKPACK) // backpack
+                        newPageID = PAGES.BACKPACK;
+                    if (!isNaN(newPageID))
                     {
-                        if (this.pages[i].page.pageID === oldpg.pageChild)
+                        var newpage = this.addPage(newPageID, item.item.Width, item.item.Height, item.item.LocalizedName, tileSize, true, null);
+                        newpage.page.slotOwner = pg.pageID;
+                        pg.pageChild = newPageID;
+                        this.sortPages();
+                        this.updateScale();
+                    }
+                    return true;
+                }
+                else
+                {
+                    item.inSlot = false;
+                    item.rotation = rotation;
+                    item.tileSizeX = pg.tileSize;
+                    item.tileSizeY = pg.tileSize;
+                    item.sizes = item.getSizes(item.rotation);
+                    item.pendingRotation = item.rotation;
+                    item.pendingSizes = item.sizes;
+                    return true;
+                }
+            }
+            else
+            {
+                var pg = this.pages[page].page;
+                var oldpg = this.pages[item.page].page;
+                for (var i = 0; i < oldpg.items.length; i++) // clear from other page
+                {
+                    var l_item = oldpg.items[i];
+                    if (l_item.x == item.x && l_item.y == item.y) oldpg.items.splice(i, 1);
+                }
+                if (pg.type === 1) // slot
+                {
+                    item.x = x;
+                    item.y = y;
+                    item.tileSizeX = pg.tileSizeX;
+                    item.tileSizeY = pg.tileSizeY;
+                    item.inSlot = true;
+                    item.rotation = 0;
+                    item.sizes = item.getSizes(0);
+                    item.pendingRotation = 0;
+                    item.pendingSizes = item.sizes;
+                    item.page = page;
+                    pg.items.push(item);
+                    if (!item.item) return true;
+                    var newPageID = NaN;
+                    if (pg.pageID == PAGES.C_SHIRT) // shirt
+                        newPageID = PAGES.SHIRT;
+                    else if (pg.pageID === PAGES.C_PANTS) // pants
+                        newPageID = PAGES.PANTS;
+                    else if (pg.pageID === PAGES.C_VEST) // vest
+                        newPageID = PAGES.VEST;
+                    else if (pg.pageID === PAGES.C_BACKPACK) // backpack
+                        newPageID = PAGES.BACKPACK;
+                    if (!isNaN(newPageID))
+                    {
+                        var newpage = this.addPage(newPageID, item.item.Width, item.item.Height, item.item.LocalizedName, tileSize, true, null);
+                        newpage.page.slotOwner = pg.pageID;
+                        pg.pageChild = newPageID;
+                        this.sortPages();
+                        this.updateScale();
+                    }
+                    return true;
+                }
+                else // page
+                {
+                    item.tileSizeX = pg.tileSize;
+                    item.tileSizeY = pg.tileSize;
+                    item.page = page;
+                    item.inSlot = false;
+                    pg.items.push(item);
+                    if (oldpg.type === 1 && oldpg.pageChild && oldpg.pageChild != pg.pageID)
+                    {
+                        for (var i = 0; i < this.pages.length; i++)
                         {
-                            if (page > i) page--;
-                            this.pages.splice(i, 1);
-                            oldpg.pageChild = null;
-                            this.updateScale();
-                            this.sortPages();
-                            break;
+                            if (this.pages[i].page.pageID === oldpg.pageChild)
+                            {
+                                if (page > i) page--;
+                                this.pages.splice(i, 1);
+                                oldpg.pageChild = null;
+                                this.updateScale();
+                                this.sortPages();
+                                break;
+                            }
                         }
                     }
                 }
@@ -701,7 +763,7 @@ function Pages(posX = 0, posY = 0)
             else return false;
         }
         // trying to move an item to its page
-        if (dstPage.slotOwner && dstPage.slotOwner == this.pages[item.page].page.pageID)
+        if (item.page > 0 && dstPage.slotOwner && dstPage.slotOwner == this.pages[item.page].page.pageID)
         {
             return false;
         }
@@ -716,11 +778,13 @@ function Pages(posX = 0, posY = 0)
             {
                 if (dstPage.cells[x1][y1].occupied)
                 {
-                    var bottomX2 = item.x + item.sizes.width;
-                    var bottomY2 = item.y + item.sizes.height;
+                    if (item.isOrphan)
+                        return false;
                     var found = false;
                     if (!item.inSlot)
                     {
+                        var bottomX2 = item.x + item.sizes.width;
+                        var bottomY2 = item.y + item.sizes.height;
                         lbl2: // allow collision with self (checks for each of the cells in items current position to see if they equal the cell being checked)
                         for (var x2 = item.x; x2 < bottomX2; x2++)
                         {
@@ -1040,7 +1104,7 @@ function Page(page = 0, pageID = 0, posX = 0, posY = 0, sizeX = 4, sizeY = 3, ti
         ctx.textAlign = 'center';
         ctx.fillStyle = '#ffffff';
         ctx.font = 'bold 17px Segoe UI';
-        ctx.fillText(this.title, this.titlePosX + this.titleSizeX / 2, this.posY + this.titleSizeY / 2 + 5.5);
+        ctx.fillText(this.title, this.titlePosX + this.titleSizeX / 2, this.posY + this.titleSizeY / 2 + 5.5, this.titleSizeX);
         for (var x = 0; x < this.sizeX; x++)
         {
             if (!this.cells[x]) continue;
@@ -1111,15 +1175,15 @@ function Page(page = 0, pageID = 0, posX = 0, posY = 0, sizeX = 4, sizeY = 3, ti
         if (y < this.gridStartY || y > this.gridStartY + this.gridSizeY) return false;
         if (round)
         {
-            var cell = this.cells[Math.floor((x - this.posX) / (this.tileSize + margin))];
+            var cell = this.cells[Math.round((x - this.posX) / (this.tileSize + margin))];
             if (cell == null)
-                cell = this.cells[Math.round((x - this.posX) / (this.tileSize + margin))];
+                cell = this.cells[Math.floor((x - this.posX) / (this.tileSize + margin))];
             if (cell == null)
                 cell = this.cells[Math.ceil((x - this.posX) / (this.tileSize + margin))];
             if (cell == null) return false;
-            var cell2 = cell[Math.floor((y - this.gridStartY) / (this.tileSize + margin))];
+            var cell2 = cell[Math.round((y - this.gridStartY) / (this.tileSize + margin))];
             if (cell2 == null)
-                cell2 = cell[Math.round((y - this.gridStartY) / (this.tileSize + margin))];
+                cell2 = cell[Math.floor((y - this.gridStartY) / (this.tileSize + margin))];
             if (cell2 == null)
                 cell2 = cell[Math.ceil((y - this.gridStartY) / (this.tileSize + margin))];
             if (cell2 == null) return false;
@@ -1311,15 +1375,18 @@ function SlotCell(page = 0, posX = 0, posY = 0, tileSizeX = 128, tileSizeY = 128
     }
 }
 const itemIconPrefix = "../loadout_assets/Items/";
+const statIconPrefix = "../assets/icons/";
 const previewColor = "#ffffff";
 const previewColorBad = "#ffaaaa";
 const pickedColor = "#f0a0a0";
 const placedColor = "#000000";
-function Item(id = 0, x = 0, y = 0, sizeX = 1, sizeY = 1, rotation = 0, name = "#NAME", description = "#DESC", page = 0, itemData = null)
+const roundPlacement = true;
+function Item(id = 0, x = 0, y = 0, sizeX = 1, sizeY = 1, rotation = 0, name = "#NAME", description = "#DESC", page = 0, itemData = null, orphan = false)
 {
     this.id = id;
     this.x = x;
     this.y = y;
+    this.isOrphan = orphan;
     this.item = itemData;
     this.page = page;
     this.isWeapon = false;
@@ -1379,7 +1446,8 @@ function Item(id = 0, x = 0, y = 0, sizeX = 1, sizeY = 1, rotation = 0, name = "
             }
         }
     }
-    this.applyOccupiedToSlots();
+    if (!this.isOrphan)
+        this.applyOccupiedToSlots();
     this.clearOccupiedFromSlots = function ()
     {
         if (this.inSlot)
@@ -1414,13 +1482,53 @@ function Item(id = 0, x = 0, y = 0, sizeX = 1, sizeY = 1, rotation = 0, name = "
         }
     }
     this.getIcon();
+    this.delete = function ()
+    {
+        this.clearOccupiedFromSlots();
+        if (this.isPicked)
+        {
+            Program.pages.pickedItem = null;
+            this.isPicked = false;
+        }
+        if (this.page < 0)
+        {
+            Program.invalidate();
+            return;
+        }
+        for (var i = 0; i < Program.pages.pages[this.page].page.items.length; i++)
+        {
+            var item = Program.pages.pages[this.page].page.items[i];
+            if (item.x == this.x && item.y == this.y)
+            {
+                Program.pages.pages[this.page].page.items.splice(i, 1);
+                break;
+            }
+        }
+        this.inSlot = false;
+        var oldpg = Program.pages.pages[this.page].page;
+        if (oldpg.type === 1)
+        {
+            for (var i = 0; i < Program.pages.pages.length; i++)
+            {
+                if (Program.pages.pages[i].page.pageID === oldpg.pageChild)
+                {
+                    Program.pages.pages.splice(i, 1);
+                    oldpg.pageChild = null;
+                    Program.pages.updateScale();
+                    Program.pages.sortPages();
+                    break;
+                }
+            }
+        }
+        Program.invalidate();
+    }
     this.render = function (ctx)
     {
         if (this.isPicked)
         {
             var xo = this.pickedLocationX + this.pickedOffsetX;
             var yo = this.pickedLocationY + this.pickedOffsetY;
-            var cell = Program.pages.getCellAtCoords(xo, yo, true);
+            var cell = Program.pages.getCellAtCoords(xo, yo, roundPlacement);
             this.renderPreview(ctx, xo, yo, cell);
             this.renderAt(ctx, xo, yo, pickedColor, 0.75, this.pendingRotation, cell, this.inSlot, this.pendingSizes, true);
             cell = Program.pages.cell(this.page, this.x, this.y);
@@ -1562,13 +1670,30 @@ function Item(id = 0, x = 0, y = 0, sizeX = 1, sizeY = 1, rotation = 0, name = "
         Program.invalidate();
         return true;
     }
+    this.deleteClicks = 0;
+    this.lastClickTime = 0;
     this.onClick = function (x, y)
     {
         if (this.isPicked)
         {
-            var cell = Program.pages.getCellAtCoords(this.pickedLocationX + this.pickedOffsetX, this.pickedLocationY + this.pickedOffsetY, true);
+            var cell = Program.pages.getCellAtCoords(this.pickedLocationX + this.pickedOffsetX, this.pickedLocationY + this.pickedOffsetY, roundPlacement);
             // trash item?
-            if (!cell) return;
+            if (!cell)
+            {
+                cell = Program.pages.getCellAtCoords(this.pickedLocationX + this.pickedOffsetX, this.pickedLocationY + this.pickedOffsetY, !roundPlacement);
+                if (!cell)
+                {
+                    // double click
+                    if (this.deleteClicks == 0 || Program.time - this.lastClickTime > 0.2)
+                    {
+                        this.deleteClicks = 1;
+                        this.lastClickTime = Program.time;
+                    }
+                    else
+                        this.delete();
+                    return;
+                }
+            }
             Program.inputConsumed = true;
             var moved = false;
             this.clearOccupiedFromSlots();
@@ -1577,12 +1702,14 @@ function Item(id = 0, x = 0, y = 0, sizeX = 1, sizeY = 1, rotation = 0, name = "
             if (moved)
             {
                 this.isPicked = false;
+                this.isOrphan = false;
                 this.applyOccupiedToSlots();
                 Program.pages.pickedItem = null;
                 Program.invalidate();
             } else
             {
                 this.isPicked = false;
+                this.isOrphan = false;
                 this.applyOccupiedToSlots();
                 Program.pages.pickedItem = null;
                 Program.invalidate();
@@ -1592,7 +1719,7 @@ function Item(id = 0, x = 0, y = 0, sizeX = 1, sizeY = 1, rotation = 0, name = "
         {
             if (Program.pages.pickedItem != null)
             {
-                console.log("item already picked up.");
+                console.warn("item already picked up.");
                 // switch item first
             }
             else
@@ -1600,9 +1727,30 @@ function Item(id = 0, x = 0, y = 0, sizeX = 1, sizeY = 1, rotation = 0, name = "
                 var cell = Program.pages.cell(this.page, this.x, this.y);
                 if (!cell) return;
                 this.pickedLocationX = x;
-                this.pickedOffsetX = this.inSlot ? 0 : (cell.posX - x + tileSize / 2);
                 this.pickedLocationY = y;
-                this.pickedOffsetY = this.inSlot ? 0 : (cell.posY - y + tileSize / 2);
+                if (this.inSlot)
+                {
+                    var ratio = (this.sizeX > this.sizeY ? Math.max(this.tileSizeX, this.tileSizeY) : Math.min(this.tileSizeX, this.tileSizeY)) / Math.max(this.sizeX, this.sizeY);
+                    if (x == cell.posX) this.pickedOffsetX = 0;
+                    else
+                    {
+                        this.pickedOffsetX = (x - cell.posX) / (this.sizeX * ratio);
+                        if (this.pickedOffsetX > 1) this.pickedOffsetX = 1;
+                        this.pickedOffsetX *= tileSize * this.sizeX * -1;
+                    }
+                    if (y == cell.posY) this.pickedOffsetY = 0;
+                    else
+                    {
+                        this.pickedOffsetY = (y - cell.posY) / (this.sizeY * ratio);
+                        if (this.pickedOffsetY > 1) this.pickedOffsetY = 1;
+                        this.pickedOffsetY *= tileSize * this.sizeY * -1;
+                    }
+                }
+                else
+                {
+                    this.pickedOffsetX = cell.posX - x + (this.tileSizeX / 3.0) * ((this.sizeX - 1.0) / 3);
+                    this.pickedOffsetY = cell.posY - y + (this.tileSizeY / 3.0) * ((this.sizeY - 1.0) / 3);
+                }
                 Program.inputConsumed = true;
                 Program.pages.pickedItem = this;
                 this.isPicked = true;
@@ -1756,6 +1904,68 @@ function PopupButton(text = null, keyShortcut = 0, onPress = function (btn) { })
         ctx.fillText(this.text, x + w / 2, y + this.center, w - this.radius);
     }
 }
+function DualSelectWidget(leftText, rightText)
+{
+    this.owner = null;
+    this.type = 2;
+    this.radius = 4;
+    this.leftButtonRadius = getRadius2(this.radius, 0, this.radius, 0);
+    this.rightButtonRadius = getRadius2(0, this.radius, 0, this.radius);
+    this.width = 0;
+    this.defaultHeight = 60;
+    this.height = 0;
+    this.posX = 0;
+    this.consumeKeys = false;
+    this.posY = 0;
+    this.selected = 0;
+    this.leftText = leftText;
+    this.rightText = rightText;
+    this.hovered = 0;
+    this.mouseMoved = function (x, y)
+    {
+        if (x < this.width / 2)
+            this.hovered = 1;
+        else
+            this.hovered = 2;
+        Program.invalidate();
+    }
+    this.reset = function ()
+    {
+        this.selected = 0;
+        this.hovered = 0;
+    }
+    this.updateDims = function (ctx, w, h)
+    {
+        this.width = w;
+        this.height = h;
+    }
+    this.renderAt = function (ctx, x = 0, y = 0, w = 0, h = 0)
+    {
+        this.width = w;
+        this.height = h;
+        this.posX = x;
+        this.posY = y;
+        ctx.fillStyle = this.selected == 1 ? popupAccent3 : (this.hovered == 1 ? popupAccent4 : popupAccent2);
+        ctx.strokeStyle = popupBackground;
+        roundedRect(ctx, x, y, this.width / 2, this.height, this.leftButtonRadius, true, true);
+        ctx.fillStyle = this.selected == 2 ? popupAccent3 : (this.hovered == 2 ? popupAccent4 : popupAccent2);
+        roundedRect(ctx, x + this.width / 2, y, this.width / 2, this.height, this.rightButtonRadius, true, true);
+        ctx.fillStyle = "#ffffff";
+        ctx.font = 'bold ' + popupButtonTextSize.toString() + 'px Segoe UI';
+        ctx.textAlign = 'center';
+        var ltm = m(ctx, this.leftText, popupButtonTextSize);
+        var rtm = m(ctx, this.rightText, popupButtonTextSize);
+        ctx.fillText(this.leftText, x + this.width / 4, y + this.height / 2 + ltm.height / 2, this.width / 2)
+        ctx.fillText(this.rightText, x + this.width * 3 / 4, y + this.height / 2 + rtm.height / 2, this.width / 2)
+    }
+    this.onClick = function(x, y)  
+    {
+        if (x < this.width / 2)
+            this.selected = this.selected == 1 ? 0 : 1;
+        else
+            this.selected = this.selected == 2 ? 0 : 2;
+    }
+}
 const blinkTime = 1.5;
 function PopupTextbox(placeholderText = "...", limitMode = 0, defaultText = "")
 {
@@ -1875,8 +2085,42 @@ function PopupTextbox(placeholderText = "...", limitMode = 0, defaultText = "")
                 if (this.cursorPosition > 0)
                     this.cursorPosition--;
             }
-        } // a-z, _, ' ', 0-9
-        else if ((event.keyCode >= 65 && event.keyCode <= 90) || event.keyCode === 173 || event.keyCode === 32 || (event.keyCode >= 48 && event.keyCode <= 57) || event.keyCode == 190 || event.keyCode == 188)
+        }
+        else if (event.keyCode === 65 && event.ctrlKey)
+        {
+            if (event.preventDefault)
+                event.preventDefault();
+            if (event.stopPropagation)
+                event.stopPropagation();
+        }/*
+        else if (event.keyCode === 86 && event.ctrlKey)
+        {
+            console.log(navigator.clipboard);
+            if (this.limitMode === 1)
+            {
+                for (var c = 0; c < text.length; c++)
+                {
+                    if (!isNaN(parseInt(text[c])))
+                    {
+                        text.splice(c, 1);
+                        c--;
+                    }
+                }
+            }
+            if (this.cursorPosition === this.text.length || this.text.length == 0)
+                this.text += text;
+            else if (this.cursorPosition === 0)
+                this.text = event.key + this.text;
+            else
+                this.text = this.text.substring(0, this.cursorPosition) + event.key + this.text.substring(this.cursorPosition, this.text.length);
+            Program.invalidate();
+            if (event.preventDefault)
+                event.preventDefault();
+            if (event.stopPropagation)
+                event.stopPropagation();
+        }*/
+        // a-z, _, ' ', 0-9
+        else if ((this.limitMode == 1 && event.keyCode >= 48 && event.keyCode <= 57) || (this.limitMode != 1 && ((event.keyCode >= 65 && event.keyCode <= 90) || event.keyCode === 173 || event.keyCode === 32 || (event.keyCode >= 48 && event.keyCode <= 57) || event.keyCode == 190 || event.keyCode == 188)))
         {
             if (this.cursorPosition === this.text.length || this.text.length == 0)
                 this.text += event.key;
@@ -1910,9 +2154,10 @@ const popupTextboxTextSize = 16;
 const popupAccent1 = "#9264cd";
 const popupAccent2 = "#532c87";
 const popupAccent3 = "#bb9fe0";
+const popupAccent4 = "#d6c5ec";
 const popupBackground = "#0d0d0d";
 const expConst = 2.1899243665;
-function Popup(title = "TITLE", message = "", buttons = [new PopupButton("OK", 13), new PopupButton("ESC", 27)], textboxes = [], darkenBackground = true)
+function Popup(title = "TITLE", message = "", buttons = [new PopupButton("OK", 13), new PopupButton("ESC", 27)], textboxes = [], widgets = [], darkenBackground = true)
 {
     this.title = title;
     this.message = message;
@@ -1926,10 +2171,26 @@ function Popup(title = "TITLE", message = "", buttons = [new PopupButton("OK", 1
     this.textboxes = textboxes;
     for (var i = 0; i < this.textboxes.length; i++)
     {
-        this.textboxes[i].clear();
         this.textboxes[i].owner = this;
-        if (i == 0) this.textboxes[0].isFocused = true;
     }
+    this.widgets = widgets;
+    for (var i = 0; i < this.widgets.length; i++)
+    {
+        this.widgets[i].owner = this;
+    }
+    this.reset = function ()
+    {
+        for (var i = 0; i < this.textboxes.length; i++)
+        {
+            this.textboxes[i].clear();
+            if (i == 0) this.textboxes[0].isFocused = true;
+        }
+        for (var i = 0; i < this.widgets.length; i++)
+        {
+            this.widgets[i].reset();
+        }
+    }
+    this.reset();
     this.darkenBackground = darkenBackground;
     this.consumeKeys = false;
     this.isOpen = false;
@@ -1949,7 +2210,10 @@ function Popup(title = "TITLE", message = "", buttons = [new PopupButton("OK", 1
         this.textHeight = 0;
         for (var i = 0; i < this.wrappedMessage.length; i++)
             this.textHeight += this.wrappedMessage[i].height + popupDescLineSpacing;
-        this.height = popupHeaderHeight + this.margin + this.textHeight + this.margin + (this.margin + popupTextboxHeight) * this.textboxes.length + (this.buttons.length == 0 ? 0 : popupButtonHeight + this.margin);
+        var wh = 0;
+        for (var i = 0; i < this.widgets.length; i++)
+            wh += this.widgets[i].defaultHeight;
+        this.height = popupHeaderHeight + this.margin + this.textHeight + this.margin + (this.margin + popupTextboxHeight) * this.textboxes.length + this.margin + wh + (this.buttons.length == 0 ? 0 : popupButtonHeight + this.margin);
         this.finalPosY = Program.canvas.height / 2 - this.height / 2;
         ctx.font = 'bold ' + popupTitleTextSize + 'px Segoe UI';
         ctx.textAlign = 'left';
@@ -1957,12 +2221,15 @@ function Popup(title = "TITLE", message = "", buttons = [new PopupButton("OK", 1
         this.buttonWidth = ((this.width - this.margin) / this.buttons.length) - this.margin;
         for (var i = 0; i < this.buttons.length; i++)
             this.buttons[i].updateDims(ctx, this.buttonWidth, popupButtonHeight);
+        for (var i = 0; i < this.widgets.length; i++)
+            this.widgets[i].updateDims(ctx, this.width - this.margin * 2, this.widgets[i].defaultHeight);
         for (var i = 0; i < this.textboxes.length; i++)
             this.textboxes[i].updateDims(ctx, this.width - this.margin * 2, popupTextboxHeight);
         this.inited = true;
     }
     this.open = function ()
     {
+        this.reset();
         this.animState = true;
         this.willAnimate = true;
         this.consumeKeys = true;
@@ -2093,6 +2360,12 @@ function Popup(title = "TITLE", message = "", buttons = [new PopupButton("OK", 1
             this.textboxes[i].renderAt(ctx, x + this.margin, ypos, this.width - this.margin * 2, popupTextboxHeight);
             ypos += popupTextboxHeight;
         }
+        for (var i = 0; i < this.widgets.length; i++)
+        {
+            ypos += this.margin;
+            this.widgets[i].renderAt(ctx, x + this.margin, ypos, this.width - this.margin * 2, this.widgets[i].defaultHeight);
+            ypos += this.widgets[i].defaultHeight;
+        }
         ypos += this.margin;
         if (this.buttons.length == 0) return;
         var xpos = x + this.margin;
@@ -2120,18 +2393,46 @@ function Popup(title = "TITLE", message = "", buttons = [new PopupButton("OK", 1
                 return;
             }
         }
+        if (event.keyCode === 27) // esc
+        {
+            this.close();
+            return;
+        }
+        else if (event.keyCode === 192) // tab
+        {
+            console.log("run");
+            if (this.textboxes.length > 1)
+            {
+                console.log(this.textboxes);
+                for (var i = 0; i < this.textboxes[i].length; i++)
+                {
+                    console.log(i);
+                    if (this.textboxes[i].isFocused && this.textboxes.length > i + 1)
+                    {
+                        this.textboxes[i].isFocused = false;
+                        this.textboxes[i + 1].isFocused = true;
+                        console.log(i)
+                        Program.invalidate();
+                        return;
+                    }
+                }
+            }
+        }
         for (var i = 0; i < this.textboxes.length; i++)
         {
             if (this.textboxes[i].isFocused)
             {
                 this.textboxes[i].keyPress(event);
                 Program.invalidate();
-                Program.inputConsumed = true;
+                return;
             }
         }
-        if (event.keyCode == 27) // esc
+        for (var i = 0; i < this.widgets.length; i++)
         {
-            this.close();
+            if (this.widgets[i].consumeKeys)
+            {
+                if (this.widgets[i].onKeyPress(event)) break;
+            }
         }
     }
     this.onClick = function (x, y)
@@ -2145,6 +2446,17 @@ function Popup(title = "TITLE", message = "", buttons = [new PopupButton("OK", 1
                 return;
             }
         }
+        for (var i = 0; i < this.widgets.length; i++)
+        {
+            if (x > this.widgets[i].posX && x < this.widgets[i].posX + this.widgets[i].width
+                && y > this.widgets[i].posY && y < this.widgets[i].posY + this.widgets[i].height)
+            {
+                Program.inputConsumed = true;
+                this.widgets[i].onClick(x - this.widgets[i].posX, y - this.widgets[i].posY);
+                Program.invalidate();
+                return;
+            }
+        }
         for (var i = 0; i < this.textboxes.length; i++)
         {
             if (this.textboxes[i].mouseInside(x, y))
@@ -2152,7 +2464,6 @@ function Popup(title = "TITLE", message = "", buttons = [new PopupButton("OK", 1
                 Program.inputConsumed = true;
                 this.textboxes[i].isFocused = true;
                 Program.invalidate();
-                return;
             }
             else
             {
@@ -2182,14 +2493,33 @@ function Popup(title = "TITLE", message = "", buttons = [new PopupButton("OK", 1
                 }
             }
         }
+        for (var i = 0; i < this.widgets.length; i++)
+        {
+            if (x > this.widgets[i].posX && x < this.widgets[i].posX + this.widgets[i].width
+                && y > this.widgets[i].posY && y < this.widgets[i].posY + this.widgets[i].height)
+            {
+                Program.moveConsumed = true;
+                this.widgets[i].mouseMoved(x - this.widgets[i].posX, y - this.widgets[i].posY);
+                return;
+            } else if (this.widgets[i].type == 2)
+            {
+                this.widgets[i].hovered = 0;
+            }
+        }
         if (Program.moveConsumed)
             Program.invalidate();
     }
 }
 function openKitWindow()
 {
+    if (Program.popup != null && (Program.popup.isOpen || Program.popup.isAnimating)) return;
     Program.popup = Program.savedPopups[0];
-    if (Program.popup.isOpen || Program.popup.isAnimating) return;
+    Program.popup.open();
+}
+function openSaveWindow()
+{
+    if (Program.popup != null && (Program.popup.isOpen || Program.popup.isAnimating)) return;
+    Program.popup = Program.savedPopups[2];
     Program.popup.open();
 }
 function keyPress(event)
@@ -2210,9 +2540,16 @@ function keyPress(event)
     }
     else if (event.keyCode === 65 && event.shiftKey) // shift + a
     {
-        console.log(event);
         if (Program.dictionary)
             Program.dictionary.open();
+    }
+    else if (event.keyCode === 83 && event.ctrlKey) // ctrl + s
+    {
+        openSaveWindow();
+        if (event.preventDefault)
+            event.preventDefault();
+        if (event.stopPropagation)
+            event.stopPropagation();
     }
 }
 function wrapText(ctx, text = "", maxWidth = 280, lineHeightDefault = 14)
@@ -2387,6 +2724,7 @@ function DictionaryEntry(itemID = 0, itemData = null, owner = null)
     this.itemData = itemData;
     this.index = 0;
     this.posX = 0;
+    this.tileradius = getRadius(radius);
     this.isHovered = false;
     this.posY = 0;
     this.icon = null;
@@ -2436,7 +2774,7 @@ function DictionaryEntry(itemID = 0, itemData = null, owner = null)
         } else
         {
             this.firstHover = false;
-            Program.invalidateAfter();
+            //Program.invalidateAfter();
         }
         if (this.itemData == null || this.itemID === 0)
         {
@@ -2480,14 +2818,41 @@ function DictionaryEntry(itemID = 0, itemData = null, owner = null)
         ctx.textAlign = 'left';
         ctx.fillStyle = dictionaryBackgroundAccentOpposite;
         var measure = ctx.measureText(this.itemData.LocalizedName);
-        var height = measure.actualBoundingBoxAscent && measure.actualBoundingBoxDescent ? measure.actualBoundingBoxAscent + measure.actualBoundingBoxDescent : dictionaryEntryTitleTextSize;
+        var height = measure.actualBoundingBoxAscent ? measure.actualBoundingBoxAscent : dictionaryEntryTitleTextSize;
         ctx.fillText(this.itemData.LocalizedName, x + this.posX + this.margin, posy + height, w - this.margin * 2);
         posy += height + this.margin;
+        var pw = w - this.margin * 2;
+        var ph = h - this.margin * 6;
+        var scale = Math.min(pw, ph) / Math.max(this.itemData.SizeX, this.itemData.SizeY);
+        var pw2 = this.itemData.SizeX * scale;
+        var ph2 = this.itemData.SizeY * scale;
+        var py = posy, px = posx;
+        if (pw2 > ph2)
+        {
+            py += (ph - ph2) / 2;
+        }
+        else
+        {
+            px += (pw - pw2) / 2;
+        }
+        for (var x = 0; x < this.itemData.SizeX; x++)
+        {
+            for (var y = 0; y < this.itemData.SizeY; y++)
+            {
+                roundedRectPath(ctx, px + x * scale, py + y * scale, scale, scale, this.tileradius);
+                ctx.globalAlpha = 0.5;
+                ctx.fillStyle = occupiedCellColor;
+                ctx.fill();
+                ctx.globalAlpha = 1.0;
+                ctx.strokeStyle = "#000000";
+                ctx.stroke();
+            }
+        }
         if (this.icon)
         {
             try
             {
-                ctx.drawImage(this.icon, posx, posy, w - this.margin * 2, w - this.margin * 2);
+                ctx.drawImage(this.icon, px, py, pw2, ph2);
             }
             catch
             {
@@ -2497,13 +2862,27 @@ function DictionaryEntry(itemID = 0, itemData = null, owner = null)
         else
         {
             ctx.fillStyle = "#999999";
-            ctx.fillRect(x + posx, posy, w - this.margin * 2, w - this.margin * 2);
+            ctx.fillRect(px, py, pw2, ph2);
         }
     }
     this.onHover = function (x, y) 
     {
         if (!this.isHovered)
             this.firstHover = true;
+    }
+    this.onClick = function (x, y)
+    {
+        if (Program.pages.pickedItem != null)
+            Program.pages.pickedItem.isPicked = false;
+        Program.pages.pickedItem = new Item(this.itemID, -1, -1, this.itemData.SizeX, this.itemData.SizeY, 0, this.itemData.LocalizedName, this.itemData.LocalizedDescription, -1, this.itemData);
+        Program.pages.pickedItem.isPicked = true;
+        Program.pages.pickedItem.isOrphan = true;
+        Program.pages.pickedItem.pickedLocationX = x;
+        Program.pages.pickedItem.pickedLocationY = y;
+        Program.pages.pickedItem.tileSizeX = tileSize;
+        Program.pages.pickedItem.tileSizeY = tileSize;
+        Program.invalidate();
+        Program.dictionary.close();
     }
 }
 const blacklistedItems = [ 1522 ]
@@ -2802,7 +3181,8 @@ function Dictionary()
             if (this.filters[i].mouseInside(x, y))
             {
                 this.filters[i].onClick();
-                filterChange |= true;
+                filterChange = true;
+                break;
             }
         }
         if (filterChange)
@@ -2833,6 +3213,20 @@ function Dictionary()
                 }
                 Program.inputConsumed = true;
                 return;
+            }
+            else
+            {
+                for (var e = 0; e < this.entries.length; e++)
+                {
+                    if (x > this.finalPosX + this.entries[e].posX && x < this.finalPosX + this.entries[e].posX + this.entries[e].width &&
+                        y > this.posY + this.entries[e].posY && y < this.posY + this.entries[e].posY + this.entries[e].height)
+                    {
+                        this.entries[e].onClick(x, y);
+                        Program.inputConsumed = true;
+                        Program.invalidate();
+                        break;
+                    }
+                }
             }
         }
     }
@@ -2892,7 +3286,7 @@ function Dictionary()
             {
                 this.entries[e].onHover(x, y);
                 this.entries[e].isHovered = true;
-                this.moveConsumed = true;
+                Program.moveConsumed = true;
                 Program.invalidate();
             } else
             {
@@ -2906,6 +3300,7 @@ function Dictionary()
 const wikiIconSize = 32;
 const wikiFieldHeight = 48;
 const maxFieldsPerRow = 6;
+const wikiBackground = "#f0f0f0";
 function Wiki()
 {
     this.title = "WIKI";
@@ -2935,7 +3330,7 @@ function Wiki()
         this.textHeight = 0;
         for (var i = 0; i < this.wrappedMessage.length; i++)
             this.textHeight += this.wrappedMessage[i].height + popupDescLineSpacing;
-        this.height = popupHeaderHeight + this.margin + this.textHeight + this.margin + this.getContentHeight() + this.margin;
+        this.height = popupHeaderHeight + this.margin + this.textHeight + this.margin + this.getContentHeight(ctx) + this.margin;
         this.finalPosY = Program.canvas.height / 2 - this.height / 2;
         ctx.font = 'bold ' + popupTitleTextSize + 'px Segoe UI';
         ctx.textAlign = 'left';
@@ -3046,13 +3441,13 @@ function Wiki()
         }
         ctx.globalAlpha = 1.0;
         if (y >= Program.canvas.height) return;
-        ctx.fillStyle = popupBackground;
+        ctx.fillStyle = wikiBackground;
         ctx.strokeStyle = popupAccent1;
         roundedRect(ctx, x, y, this.width, this.height, this.radius, true, true);
         ctx.strokeStyle = "#000000";
         ctx.fillStyle = popupAccent1;
         roundedRect(ctx, x, y, this.width, popupHeaderHeight, this.headerRadius, true, false);
-        ctx.fillStyle = "#ffffff";
+        ctx.fillStyle = "#000000";
         ctx.font = 'bold ' + popupTitleTextSize + 'px Segoe UI';
         ctx.textAlign = 'left';
         var ypos = y + popupHeaderHeight;
@@ -3100,7 +3495,7 @@ function Wiki()
     {
         if (this.currentItem === null) return;
         var type = this.currentItem.T;
-        ypos = this.renderBase(ctx, ypos, this.currentItem.T === 0);
+        var ypos = this.renderBase(ctx, 0, this.currentItem.T === 0);
         switch (type) 
         {
             case 0:
@@ -3113,15 +3508,12 @@ function Wiki()
             case 50:
                 break;
             case 1: // gun
-                ypos = this.renderUseable(ctx, ypos, false, true);
                 ypos = this.renderGun(ctx, ypos, true, true);
                 break;
             case 2: // magazine
-                ypos = this.renderAttachment(ctx, ypos, false, true, true);
                 ypos = this.renderMagazine(ctx, ypos, true, true);
                 break;
             case 3: // throwable
-                ypos = this.renderUseable(ctx, ypos, false, true);
                 ypos = this.renderThrowable(ctx, ypos, true, true);
                 break;
             case 4: // clothing
@@ -3131,7 +3523,6 @@ function Wiki()
             case 46:
             case 48:
             case 5: // storage clothing
-                ypos = this.renderClothing(ctx, ypos, false, true);
                 ypos = this.renderStorageClothing(ctx, ypos, true, true);
                 break;
             case 6: // barricade
@@ -3141,33 +3532,27 @@ function Wiki()
                 ypos = this.renderStructure(ctx, ypos, true, true);
                 break;
             case 8: // trap
-                ypos = this.renderBarricade(ctx, ypos, false, true);
                 ypos = this.renderTrap(ctx, ypos, true, true);
                 break;
             case 9: // attachment
                 ypos = this.renderAttachment(ctx, ypos, true, true);
                 break;
             case 10: // sight
-                ypos = this.renderAttachment(ctx, ypos, false, true);
                 ypos = this.renderSight(ctx, ypos, true, true);
                 break;
             case 11: // grip
-                ypos = this.renderAttachment(ctx, ypos, false, true);
                 ypos = this.renderGrip(ctx, ypos, true, true);
                 break;
             case 12: // tactical
-                ypos = this.renderAttachment(ctx, ypos, false, true);
                 ypos = this.renderTactical(ctx, ypos, true, true);
                 break;
             case 13: // barrel
-                ypos = this.renderAttachment(ctx, ypos, false, true);
                 ypos = this.renderBarrel(ctx, ypos, true, true);
                 break;
             case 41: // food
             case 42: // medical
             case 43: // water
             case 14: // consumable
-                ypos = this.renderUseable(ctx, ypos, false, true);
                 ypos = this.renderConsumable(ctx, ypos, true, true);
                 break;
             case 15: // consumable
@@ -3180,7 +3565,6 @@ function Wiki()
                 ypos = this.renderZoom(ctx, ypos, true, true);
                 break;
             case 18: // charge
-                ypos = this.renderBarricade(ctx, ypos, false, true);
                 ypos = this.renderCharge(ctx, ypos, true, true);
                 break;
             case 19: // refill
@@ -3193,36 +3577,28 @@ function Wiki()
                 ypos = this.renderHandcuff(ctx, ypos, true, true);
                 break;
             case 22: // beacon
-                ypos = this.renderBarricade(ctx, ypos, false, true);
                 ypos = this.renderBeacon(ctx, ypos, true, true);
                 break;
             case 23: // farm
-                ypos = this.renderBarricade(ctx, ypos, false, true);
                 ypos = this.renderFarm(ctx, ypos, true, true);
                 break;
             case 24: // generator
-                ypos = this.renderBarricade(ctx, ypos, false, true);
                 ypos = this.renderGenerator(ctx, ypos, true, true);
                 break;
             case 25: // library
-                ypos = this.renderBarricade(ctx, ypos, false, true);
                 ypos = this.renderLibrary(ctx, ypos, true, true);
                 break;
             case 26: // storage
-                ypos = this.renderBarricade(ctx, ypos, false, true);
                 ypos = this.renderStorage(ctx, ypos, true, true);
                 break;
             case 27: // tank
-                ypos = this.renderBarricade(ctx, ypos, false, true);
                 ypos = this.renderTank(ctx, ypos, true, true);
                 break;
             case 28: // workshop box
-                ypos = this.renderBarricade(ctx, ypos, false, true);
                 ypos = this.renderWorkshopBox(ctx, ypos, true, true);
                 break;
             case 50:
             case 29: // non-storage clothes
-                ypos = this.renderClothing(ctx, ypos, false, true);
                 ypos = this.renderGear(ctx, ypos, true, true);
                 break;
             case 30: // cloud
@@ -3238,34 +3614,27 @@ function Wiki()
                 ypos = this.renderTire(ctx, ypos, true, true);
                 break;
             case 40: // melee
-                ypos = this.renderUseable(ctx, ypos, false, true);
                 ypos = this.renderMelee(ctx, ypos, true, true);
                 break;
             case 44: // handcuff key
                 ypos = this.renderHandcuffKey(ctx, ypos, true);
                 break;
             case 47: // shirt
-                ypos = this.renderClothing(ctx, ypos, false, true);
-                ypos = this.renderStorageClothing(ctx, ypos, false, true);
                 ypos = this.renderShirt(ctx, ypos, true, true);
                 break;
             case 49: // glasses
-                ypos = this.renderClothing(ctx, ypos, false, true);
-                ypos = this.renderGear(ctx, ypos, false, true);
                 ypos = this.renderGlasses(ctx, ypos, true, true);
                 break;
             case 51: // mask
-                ypos = this.renderClothing(ctx, ypos, false, true);
-                ypos = this.renderGear(ctx, ypos, false, true);
                 ypos = this.renderMask(ctx, ypos, true, true);
                 break;
         }
         return ypos;
     }
-    this.renderCustom = function (ctx, ypos)
+    this.renderCustom = function (ctx, ypos2)
     {
         var type = this.currentItem.T;
-        ypos = this.renderBase(ctx, ypos, this.currentItem.T === 0);
+        var ypos = this.renderBase(ctx, ypos2, this.currentItem.T === 0);
         switch (type) 
         {
             case 0:
@@ -3278,15 +3647,12 @@ function Wiki()
             case 50:
                 break;
             case 1: // gun
-                ypos = this.renderUseable(ctx, ypos);
                 ypos = this.renderGun(ctx, ypos, true);
                 break;
             case 2: // magazine
-                ypos = this.renderAttachment(ctx, ypos);
                 ypos = this.renderMagazine(ctx, ypos, true);
                 break;
             case 3: // throwable
-                ypos = this.renderUseable(ctx, ypos);
                 ypos = this.renderThrowable(ctx, ypos, true);
                 break;
             case 4: // clothing
@@ -3296,7 +3662,6 @@ function Wiki()
             case 46:
             case 48:
             case 5: // storage clothing
-                ypos = this.renderClothing(ctx, ypos);
                 ypos = this.renderStorageClothing(ctx, ypos, true);
                 break;
             case 6: // barricade
@@ -3306,33 +3671,27 @@ function Wiki()
                 ypos = this.renderStructure(ctx, ypos, true);
                 break;
             case 8: // trap
-                ypos = this.renderBarricade(ctx, ypos);
                 ypos = this.renderTrap(ctx, ypos, true);
                 break;
             case 9: // attachment
                 ypos = this.renderAttachment(ctx, ypos, true);
                 break;
             case 10: // sight
-                ypos = this.renderAttachment(ctx, ypos);
                 ypos = this.renderSight(ctx, ypos, true);
                 break;
             case 11: // grip
-                ypos = this.renderAttachment(ctx, ypos);
                 ypos = this.renderGrip(ctx, ypos, true);
                 break;
             case 12: // tactical
-                ypos = this.renderAttachment(ctx, ypos);
                 ypos = this.renderTactical(ctx, ypos, true);
                 break;
             case 13: // barrel
-                ypos = this.renderAttachment(ctx, ypos);
                 ypos = this.renderBarrel(ctx, ypos, true);
                 break;
             case 41: // food
             case 42: // medical
             case 43: // water
             case 14: // consumable
-                ypos = this.renderUseable(ctx, ypos);
                 ypos = this.renderConsumable(ctx, ypos, true);
                 break;
             case 15: // consumable
@@ -3345,7 +3704,6 @@ function Wiki()
                 ypos = this.renderZoom(ctx, ypos, true);
                 break;
             case 18: // charge
-                ypos = this.renderBarricade(ctx, ypos);
                 ypos = this.renderCharge(ctx, ypos, true);
                 break;
             case 19: // refill
@@ -3358,36 +3716,28 @@ function Wiki()
                 ypos = this.renderHandcuff(ctx, ypos, true);
                 break;
             case 22: // beacon
-                ypos = this.renderBarricade(ctx, ypos);
                 ypos = this.renderBeacon(ctx, ypos, true);
                 break;
             case 23: // farm
-                ypos = this.renderBarricade(ctx, ypos);
                 ypos = this.renderFarm(ctx, ypos, true);
                 break;
             case 24: // generator
-                ypos = this.renderBarricade(ctx, ypos);
                 ypos = this.renderGenerator(ctx, ypos, true);
                 break;
             case 25: // library
-                ypos = this.renderBarricade(ctx, ypos);
                 ypos = this.renderLibrary(ctx, ypos, true);
                 break;
             case 26: // storage
-                ypos = this.renderBarricade(ctx, ypos);
                 ypos = this.renderStorage(ctx, ypos, true);
                 break;
             case 27: // tank
-                ypos = this.renderBarricade(ctx, ypos);
                 ypos = this.renderTank(ctx, ypos, true);
                 break;
             case 28: // workshop box
-                ypos = this.renderBarricade(ctx, ypos);
                 ypos = this.renderWorkshopBox(ctx, ypos, true);
                 break;
             case 50:
             case 29: // non-storage clothes
-                ypos = this.renderClothing(ctx, ypos);
                 ypos = this.renderGear(ctx, ypos, true);
                 break;
             case 30: // cloud
@@ -3403,43 +3753,57 @@ function Wiki()
                 ypos = this.renderTire(ctx, ypos, true);
                 break;
             case 40: // melee
-                ypos = this.renderUseable(ctx, ypos);
                 ypos = this.renderMelee(ctx, ypos, true);
                 break;
             case 44: // handcuff key
                 ypos = this.renderHandcuffKey(ctx, ypos, true);
                 break;
             case 47: // shirt
-                ypos = this.renderClothing(ctx, ypos);
-                ypos = this.renderStorageClothing(ctx, ypos);
                 ypos = this.renderShirt(ctx, ypos, true);
                 break;
             case 49: // glasses
-                ypos = this.renderClothing(ctx, ypos);
-                ypos = this.renderGear(ctx, ypos);
                 ypos = this.renderGlasses(ctx, ypos, true);
                 break;
             case 51: // mask
-                ypos = this.renderClothing(ctx, ypos);
-                ypos = this.renderGear(ctx, ypos);
                 ypos = this.renderMask(ctx, ypos, true);
                 break;
         }
         return ypos;
     }
+    const imageSize = 32;
     this.renderBase = function (ctx, ypos, final = false, onlyCalc = false)
     {
-        var sizeTxt = `Size: ${this.currentItem.SizeX}, ${this.currentItem.SizeY}`;
-        var typeTxt = `Type: ${this.currentItem.Type}`;
-        var rarityTxt = `Type: ${this.currentItem.Rarity}`;
-        var len1 = ctx.measureText(sizeTxt);
-        var len2 = ctx.measureText(typeTxt);
-        var len3 = ctx.measureText(rarityTxt);
+        var sizeTxt = `${this.currentItem.SizeX}x${this.currentItem.SizeY}`;
+        var typeTxt = `${this.currentItem.Type}`;
+        var rarityTxt = `${this.currentItem.Rarity}`;
+        ctx.fillStyle = "#000000";
+        ctx.font = popupDescTextSize.toString() + 'px Segoe UI';
+        var len1 = m(ctx, sizeTxt, popupDescTextSize);
+        var len2 = m(ctx, typeTxt, popupDescTextSize);
+        var len3 = m(ctx, rarityTxt, popupDescTextSize);
+        var xpos = this.posX + this.margin;
+        ypos += this.margin;
         if (!onlyCalc)
         {
-            ctx.fillStyle = "#ffffff";
-            ctx.font = popupDescTextSize.toString() + 'px Segoe UI';
+            var img = new Image(imageSize, imageSize);
+            img.src = statIconPrefix + "SizeX.svg";
+            ctx.drawImage(img, xpos, ypos, imageSize, imageSize);
+            ctx.fillText(sizeTxt, xpos + imageSize + this.margin / 2, ypos + imageSize - (imageSize / 2 - len1.height / 2));
         }
+        ypos += imageSize;
+        ypos += this.margin;
+        ypos += len2.height;
+        if (!onlyCalc)
+        {
+            ctx.fillText(typeTxt, xpos, ypos);
+        }
+        ypos += this.margin;
+        ypos += len3.height;
+        if (!onlyCalc)
+        {
+            ctx.fillText(rarityTxt, xpos, ypos);
+        }
+        ypos += this.margin;
         return ypos;
     }
     this.renderUseable = function (ctx, ypos, final = false, onlyCalc = false)
@@ -3594,4 +3958,15 @@ function Wiki()
     {
         return ypos;
     }
+}
+function m(ctx, text, defaultHeight = 14)
+{
+    var ms = ctx.measureText(text);
+    return {
+        width: ms.width,
+        height: ms.actualBoundingBoxAscent && ms.actualBoundingBoxDescent ? ms.actualBoundingBoxAscent + ms.actualBoundingBoxDescent : defaultHeight,
+        up: ms.actualBoundingBoxAscent ? ms.actualBoundingBoxAscent : defaultHeight,
+        down: ms.actualBoundingBoxDescent ? ms.actualBoundingBoxDescent : 0,
+        raw: ms
+    };
 }
