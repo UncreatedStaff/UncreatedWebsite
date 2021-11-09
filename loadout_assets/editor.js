@@ -1,4 +1,5 @@
-﻿const PAGES = Object.freeze({
+﻿/*jshint esversion: 6 */
+const PAGES = Object.freeze({
     PRIMARY: 0,
     SECONDARY: 1,
     HANDS: 2,
@@ -17,22 +18,37 @@
     C_PANTS: -8
 });
 // order to sort pages when calling Pages.sortPages();
-const PAGEORDER = [ PAGES.HANDS, PAGES.BACKPACK, PAGES.VEST, PAGES.SHIRT, PAGES.PANTS, PAGES.PRIMARY, PAGES.SECONDARY,
-                    PAGES.C_BACKPACK, PAGES.C_VEST, PAGES.C_SHIRT, PAGES.C_PANTS, PAGES.C_HAT, PAGES.C_MASK, PAGES.C_GLASSES ];
+const PAGEORDER = [PAGES.HANDS, PAGES.BACKPACK, PAGES.VEST, PAGES.SHIRT, PAGES.PANTS, PAGES.PRIMARY, PAGES.SECONDARY,
+PAGES.C_BACKPACK, PAGES.C_VEST, PAGES.C_SHIRT, PAGES.C_PANTS, PAGES.C_HAT, PAGES.C_MASK, PAGES.C_GLASSES];
 const tileSize = 32;
 document.body.onload = startEditor;
-function startEditor() {
+function startEditor()
+{
     Program.start();
 }
-const Program = {
+export const Program = {
+    /** @type {HTMLCanvasElement} **/
     canvas: null,
+    /** @type {CanvasRenderingContext2D} **/
     context: null,
+    /** @type {HTMLElement} **/
     header: null,
+    /** @type {Wiki} **/
     wiki: null,
+    /** @type {URLSearchParams} **/
     url: null,
+    /** @type {Popup} **/
+    popup: null,
+    /** @type {Popup[]} **/
+    savedPopups: null,
+    /** @type {Dictionary} **/
+    dictionary: null,
+    /** @type {StartupData} **/
+    DATA: null,
     start: function () 
     {
         document.onkeydown = keyPress;
+        document.oncontextmenu = contextOverride;
         window.onresize = resizeInt;
         this.canvas = document.createElement("canvas");
         this.header = document.getElementById("headerObj");
@@ -43,34 +59,38 @@ const Program = {
             console.error("Failed to create canvas.");
             return;
         }
+        console.log(deleteButton);
         this.canvas.addEventListener("click", onClick);
         this.canvas.addEventListener("mousemove", onMouseMove);
+        this.bounds = this.canvas.getBoundingClientRect();
         this.popup = null;
         document.getElementById("canvas-container").appendChild(this.canvas);
         this.context = this.canvas.getContext("2d");
         this.savedPopups =
             [
-            new Popup("Preload Kit", "Start your loadout off with a kit that's already in-game. To use someone's loadout, type <their Steam64 ID>_<a-z in the order they were made> (for example 76561198267927009_a).",
-                [new PopupButton("LOAD", 13, loadKitBtn), new PopupButton("CANCEL", 27, closePopup)],
-                [new PopupTextbox("Kit ID", 0, "usrif1")]),
-            new Popup("Connection Error", "It seems like the server is not connected the the web server properly. If there isn't planned matenence on the server, contact one of the Directors to check on this for you.",
-                [new PopupButton("CLOSE", 13, navigateToHomePage)]),
-            new Popup("Save Kit", "Fill in the below information to submit your kit for verification.",
-                [new PopupButton("SAVE", 13, saveKit), new PopupButton("CANCEL", 27, closePopup)],
-                [new PopupTextbox("Username", 0, ""), new PopupTextbox("Steam64", 1, ""),
+                new Popup("Preload Kit", "Start your loadout off with a kit that's already in-game. To use someone's loadout, type <their Steam64 ID>_<a-z in the order they were made> (for example 76561198267927009_a).",
+                    [new PopupButton("LOAD", 13, loadKitBtn), new PopupButton("CANCEL", 27, closePopup)],
+                    [new PopupTextbox("Kit ID", 0, "usrif1")]),
+                new Popup("Connection Error", "It seems like the server is not connected the the web server properly. If there isn't planned matenence on the server, contact one of the Directors to check on this for you.",
+                    [new PopupButton("CLOSE", 13, navigateToHomePage)]),
+                new Popup("Save Kit", "Fill in the below information to submit your kit for verification. Valid classes: Squadleader, Rifleman, Medic, Breacher, Automatic Rifleman, Grenadier, Machine Gunner, LAT, HAT, Marksman, Sniper, AP Rifleman, Combat Engineer, Crewman, or Pilot",
+                    [new PopupButton("SAVE", 13, saveKit), new PopupButton("CANCEL", 27, closePopup)],
+                    [new PopupTextbox("Username", 0, ""), new PopupTextbox("Steam64", 1, ""),
                     new PopupTextbox("Kit Name", 0, ""), new PopupTextbox("Class", 0, "")],
-                [new DualSelectWidget("USA", "RUSSIA")], true)
+                    [new DualSelectWidget("USA", "RUSSIA")], true)
             ];
+        attachmentButton = new ContextButton("Edit Attachments", editAttachments);
+        deleteButton = new ContextButton("Dispose", disposeItem);
         this.pages = new Pages(25, 25);
-        this.pages.addSlot(PAGES.PRIMARY, "Primary", tileSize * 6, tileSize * 4, true, (item) => item.item.SlotType == 1 || item.item.SlotType == 2 || item.item.SlotType == 4);
-        this.pages.addSlot(PAGES.SECONDARY, "Secondary", tileSize * 6, tileSize * 4, true, (item) => item.item.SlotType == 2 || item.item.SlotType == 4);
-        this.pages.addSlot(PAGES.C_HAT, "Hat", tileSize * 4, tileSize * 4, true, (item) => item.item.T == 50);
-        this.pages.addSlot(PAGES.C_GLASSES, "Glasses", tileSize * 4, tileSize * 4, true, (item) => item.item.T == 49);
-        this.pages.addSlot(PAGES.C_MASK, "Mask", tileSize * 4, tileSize * 4, true, (item) => item.item.T == 51);
-        this.pages.addSlot(PAGES.C_SHIRT, "Shirt", tileSize * 4, tileSize * 4, true, (item) => item.item.T == 47);
-        this.pages.addSlot(PAGES.C_VEST, "Vest", tileSize * 4, tileSize * 4, true, (item) => item.item.T == 48);
-        this.pages.addSlot(PAGES.C_BACKPACK, "Backpack", tileSize * 4, tileSize * 4, true, (item) => item.item.T == 45);
-        this.pages.addSlot(PAGES.C_PANTS, "Pants", tileSize * 4, tileSize * 4, true, (item) => item.item.T == 46);
+        this.pages.addSlot(PAGES.PRIMARY, "Primary", tileSize * 6, tileSize * 4, true, "primary.svg", (item) => item.item.SlotType == 1 || item.item.SlotType == 2 || item.item.SlotType == 4);
+        this.pages.addSlot(PAGES.SECONDARY, "Secondary", tileSize * 6, tileSize * 4, true, "secondary.svg", (item) => item.item.SlotType == 2 || item.item.SlotType == 4);
+        this.pages.addSlot(PAGES.C_HAT, "Hat", tileSize * 4, tileSize * 4, true, "hat.svg", (item) => item.item.T == 50);
+        this.pages.addSlot(PAGES.C_GLASSES, "Glasses", tileSize * 4, tileSize * 4, true, "glasses.svg", (item) => item.item.T == 49);
+        this.pages.addSlot(PAGES.C_MASK, "Mask", tileSize * 4, tileSize * 4, true, "mask.svg", (item) => item.item.T == 51);
+        this.pages.addSlot(PAGES.C_SHIRT, "Shirt", tileSize * 4, tileSize * 4, true, "shirt.svg", (item) => item.item.T == 47);
+        this.pages.addSlot(PAGES.C_VEST, "Vest", tileSize * 4, tileSize * 4, true, "vest.svg", (item) => item.item.T == 48);
+        this.pages.addSlot(PAGES.C_BACKPACK, "Backpack", tileSize * 4, tileSize * 4, true, "backpack.svg", (item) => item.item.T == 45);
+        this.pages.addSlot(PAGES.C_PANTS, "Pants", tileSize * 4, tileSize * 4, true, "pants.svg", (item) => item.item.T == 46);
         this.pages.addPage(PAGES.HANDS, 5, 3, "Hands", tileSize, true);
         this.pages.sortPages();
         this.dictionary = new Dictionary();
@@ -83,7 +103,8 @@ const Program = {
         {
             if (!response.responseJSON.State)
             {
-                Program.popup?.close();
+                if (Program.popup)
+                    Program.popup.close();
                 Program.popup = Program.savedPopups[1];
                 Program.popup.open();
             }
@@ -96,7 +117,8 @@ const Program = {
                     this.isLoading = false;
                     if (!(response.responseJSON.Success && response.responseJSON.State))
                     {
-                        Program.popup?.close();
+                        if (Program.popup)
+                            Program.popup.close();
                         Program.popup = Program.savedPopups[1];
                         Program.popup.open();
                     }
@@ -124,6 +146,7 @@ const Program = {
     {
         this.canvas.width = window.innerWidth - 40;
         this.canvas.height = window.innerHeight - this.header.clientHeight - this.footer.clientHeight - 40;
+        this.bounds = this.canvas.getBoundingClientRect();
         if (this.pages == null)
             console.warn("Pages is null");
         else
@@ -132,6 +155,8 @@ const Program = {
             this.popup.updateDims(this.context);
         if (this.dictionary)
             this.dictionary.updateDims(this.context);
+        if (this.wiki)
+            this.wiki.updateDims(this.context);
     },
     tick: function ()
     {
@@ -153,29 +178,30 @@ const Program = {
     {
         this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
     },
-    inputConsumed: true,
+    mouseBtn1Consumed: false,
+    mouseBtn2Consumed: false,
     onClick: function (x, y)
     {
         if (this.isLoading) return;
-        this.inputConsumed = false;
+        this.mouseBtn1Consumed = false;
         if (Program.popup != null && Program.popup.consumeKeys && Program.popup.isOpen)
         {
             Program.popup.onClick(x, y);
-            this.inputConsumed = true;
+            this.mouseBtn1Consumed = true;
         }
         else if (this.dictionary && this.dictionary.isOpen)
         {
             this.dictionary.onClick(x, y);
-            this.inputConsumed = true;
+            this.mouseBtn1Consumed = true;
         }
         else if (this.wiki && this.wiki.isOpen)
         {
             this.wiki.onClick(x, y);
-            this.inputConsumed = true;
+            this.mouseBtn1Consumed = true;
         }
-        if (!this.inputConsumed)
+        if (!this.mouseBtn1Consumed)
             this.pages.onClick(x, y);
-        if (this.inputConsumed)
+        if (this.mouseBtn1Consumed)
             this.tick();
     },
     moveConsumed: true,
@@ -195,6 +221,22 @@ const Program = {
             this.tick();
     },
     time: 0.0,
+    bounds: null,
+    onContextMenu: function (event)
+    {
+        if (this.isLoading) return;
+        this.mouseBtn2Consumed = false;
+        if (event.clientX < this.bounds.left || event.clientX > this.bounds.right || event.clientY < this.bounds.top || event.clientY > this.bounds.bottom) return;
+        var x = event.clientX - this.bounds.left;
+        var y = event.clientY - this.bounds.top;
+        if (this.pages)
+            this.pages.onRightClick(x, y);
+        if (this.mouseBtn2Consumed)
+        {
+            event.stopPropagation();
+            event.preventDefault();
+        }
+    },
     lastTick: 0,
     ticks: 0,
     deltaTime: 0,
@@ -281,10 +323,23 @@ function loadKit(kitname)
     });
     return response;
 }
+/**
+ * 
+ * @param {PopupButton} btn 
+ */
 function saveKit(btn)
 {
     console.log(btn);
 }
+/**
+ * 
+ * @param {CanvasRenderingContext2D} ctx 
+ * @param {number} deltaTime 
+ * @param {number} realtime 
+ * @param {number} ticks 
+ * @param {HTMLCanvasElement} canvas 
+ * @returns Boolean deciding wheter the next tick should execute.
+ */
 function tick(ctx, deltaTime, realtime, ticks, canvas)
 {
     if (!ctx)
@@ -333,6 +388,10 @@ function closePopup(btn)
     if (btn.owner) btn.owner.close();
     else if (Program.popup) Program.popup.close();
 }
+function contextOverride(event)
+{
+    Program.onContextMenu(event);
+}
 const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 const radius = 2;
 const margin = 0;
@@ -344,15 +403,20 @@ const widthMarginBetweenPages = 10;
 const defaultCellColor = "#0f0f0f";
 const hoveredCellColor = "#1f1f5f";
 const occupiedCellColor = "#0b0b0b";
+var attachmentButton = null;
+var deleteButton = null;
 function Pages(posX = 0, posY = 0)
 {
     this.posX = posX;
     this.hoveredCell = null;
     this.posY = posY;
     this.pages = [];
+    this.contextMenu = null;
     this.pickedItem = null;
     this.updateScale = function ()
     {
+        if (this.contextMenu)
+            this.contextMenu.updateDims(Program.context, this.contextMenu.posX, this.contextMenu.posY);
         if (this.pages.length == 0) return;
         if (this.pages.length == 1)
         {
@@ -420,14 +484,22 @@ function Pages(posX = 0, posY = 0)
         {
             this.pages[i].page.renderForeground(ctx);
         }
+        if (this.contextMenu)
+            this.contextMenu.render(ctx);
     }
     this.onClick = function (x, y)
     {
+        if (this.contextMenu)
+        {
+            this.contextMenu = null;
+            Program.mouseBtn1Consumed = true;
+            return;
+        }
         if (x < this.posX || y < this.posY) return;
         if (this.pickedItem != null)
         {
             this.pickedItem.onClick(x, y);
-            if (Program.inputConsumed) return;
+            if (Program.mouseBtn1Consumed) return;
         }
         for (var i = 0; i < this.pages.length; i++)
         {
@@ -440,10 +512,10 @@ function Pages(posX = 0, posY = 0)
                     if (!item.isPicked && cell.coordX >= item.x && cell.coordY >= item.y && cell.coordX < item.x + item.sizes.width && cell.coordY < item.y + item.sizes.height)
                     {
                         item.onClick(x, y);
-                        if (Program.inputConsumed) return;
+                        if (Program.mouseBtn1Consumed) return;
                     }
                 }
-                if (Program.inputConsumed)
+                if (Program.mouseBtn1Consumed)
                     Program.invalidate();
                 break;
             }
@@ -451,7 +523,8 @@ function Pages(posX = 0, posY = 0)
     }
     this.onMouseMoved = function (x, y)
     {
-        this.pickedItem?.onMouseMoved(x, y);
+        if (this.pickedItem)
+            this.pickedItem.onMouseMoved(x, y);
         if (x > this.posX && y > this.posY)
         {
             for (var i = 0; i < this.pages.length; i++)
@@ -484,7 +557,7 @@ function Pages(posX = 0, posY = 0)
         }
         return false;
     }
-    this.loadKit = function (kitdata = { Kit: { Items: [], Clothes: [] }})
+    this.loadKit = function (kitdata = { Kit: { Items: [], Clothes: [] } })
     {
         // clear item pages.
         for (var i = this.pages.length - 1; i >= 0; i--)
@@ -611,7 +684,7 @@ function Pages(posX = 0, posY = 0)
             return false;
         }
         return this.pages[item.page].page.addItem(item, itemChange);
-    }
+    };
     this.propogateRotate = function ()
     {
         if (this.pickedItem != null)
@@ -893,8 +966,59 @@ function Pages(posX = 0, posY = 0)
         if (!this.checkCoords(page, x, y)) return false;
         else return this.pages[page].page.cells[x][y];
     }
+    this.onRightClick = function (x, y)
+    {
+        if (this.pickedItem != null)
+        {
+            Program.mouseBtn2Consumed = true;
+            return;
+        }
+        if (this.contextMenu)
+            this.contextMenu = null;
+        p:
+        for (var p = 0; p < this.pages.length; p++)
+        {
+            var pg = this.pages[p].page;
+            for (var i = 0; i < pg.items.length; i++)
+            {
+                var item = pg.items[i];
+                var bounds = item.isPointInside(x, y);
+                if (bounds)
+                {
+                    var btns = [];
+                    if (item.item && item.item.T === 1)
+                        btns.push(attachmentButton);
+
+                    btns.push(deleteButton);
+                    this.contextMenu = new ContextMenu("Item", btns);
+                    this.contextMenu.item = item;
+                    this.contextMenu.updateDims(Program.context, x, y);
+                    Program.mouseBtn2Consumed = true;
+                    Program.invalidate();
+                    break p;
+                }
+            }
+        }
+    }
 }
-function SlotPage(page = 0, pageID = 0, posX = 0, posY = 0, title = "PAGE", tileSizeX = 128, tileSizeY = 128, canEquip = (item) => true)
+function editAttachments(btn)
+{
+    if (btn.owner && btn.owner.item)
+    {
+        return true;
+    }
+    else return false;
+}
+function disposeItem(btn)
+{
+    if (btn.owner && btn.owner.item)
+    {
+        btn.owner.item.delete();
+        return true;
+    }
+    else return false;
+}
+function SlotPage(page = 0, pageID = 0, posX = 0, posY = 0, title = "PAGE", tileSizeX = 128, tileSizeY = 128, background = "none", canEquip = (item) => true)
 {
     this.type = 1;
     this.page = page;
@@ -908,6 +1032,7 @@ function SlotPage(page = 0, pageID = 0, posX = 0, posY = 0, title = "PAGE", tile
     this.sizeY = 1;
     this.title = title;
     this.items = [];
+    this.backgroundIconSrc = background;
     this.pageChild = null;
     this.gridSizeY = function ()
     {
@@ -937,7 +1062,7 @@ function SlotPage(page = 0, pageID = 0, posX = 0, posY = 0, title = "PAGE", tile
     {
         return this.posX + this.tileSizeX;
     }
-    this.cells = [[new SlotCell(this.page, this.posX, this.gridStartY, this.tileSizeX, this.tileSizeY)]];
+    this.cells = [[new SlotCell(this.page, this.posX, this.gridStartY, this.tileSizeX, this.tileSizeY, this.backgroundIconSrc)]];
     this.renderBackground = function (ctx)
     {
         ctx.globalAlpha = 0.5;
@@ -985,6 +1110,7 @@ function SlotPage(page = 0, pageID = 0, posX = 0, posY = 0, title = "PAGE", tile
             item.tileSizeX = this.tileSizeX;
             item.tileSizeY = this.tileSizeY;
             itemChange(item);
+            this.cells[0][0].occupied = true;
             this.items.push(item);
             Program.invalidate();
             return item;
@@ -1133,7 +1259,7 @@ function Page(page = 0, pageID = 0, posX = 0, posY = 0, sizeX = 4, sizeY = 3, ti
         description: "#DESC",
         tileSize: 128,
         page: 0
-    }, itemChange = (item) => {})
+    }, itemChange = (item) => { })
     {
         if (item == null)
         {
@@ -1343,7 +1469,7 @@ function InventoryCell(page = 0, posX = 0, posY = 0, tileSize = 128, notation = 
         ctx.stroke();
     }
 }
-function SlotCell(page = 0, posX = 0, posY = 0, tileSizeX = 128, tileSizeY = 128)
+function SlotCell(page = 0, posX = 0, posY = 0, tileSizeX = 128, tileSizeY = 128, background = "none")
 {
     this.type = 1;
     this.page = page;
@@ -1352,35 +1478,74 @@ function SlotCell(page = 0, posX = 0, posY = 0, tileSizeX = 128, tileSizeY = 128
     this.notation = "A1";
     this.tileSizeX = tileSizeX;
     this.tileSizeY = tileSizeY;
+    this.backgroundIconSrc = statIconPrefix + background;
+    this.background = null;
     this.posX = posX;
     this.posY = posY;
     this.radius = getRadius(radius);
     this.color = defaultCellColor;
     this.occupied = false;
+    this.getIcon = function ()
+    {
+        if (this.dontRequestImage || this.backgroundIconSrc === null || this.backgroundIconSrc === "none") return;
+        if (!Program.pages.pages[this.page]) return;
+        var id = Program.pages.pages[this.page].page.pageID * -1;
+        this.background = Program.pages.iconCache.get(id);
+        if (!this.background)
+        {
+            this.background = new Image(this.tileSizeX, this.tileSizeY);
+            this.background.id = id;
+            this.background.onload = onImageLoad;
+            this.background.src = this.backgroundIconSrc;
+            Program.pages.iconCache.set(this.background.id, this.background);
+        }
+    }
+    this.getIcon();
     this.checkOccupied = function ()
     {
         if (!Program.pages.checkCoords(this.page, 0, 0)) return false;
+        if (!Program.pages.pages[this.page]) return false;
         if (Program.pages.pages[this.page].page.items.length < 1) return false;
         else return true;
     }
     this.render = function (ctx)
     {
+        if (!this.occupied && this.icon == null && !this.dontRequestImage)
+        {
+            this.getIcon();
+        }
         roundedRectPath(ctx, this.posX, this.posY, this.tileSizeX, this.tileSizeY, this.radius);
         ctx.globalAlpha = 0.5;
         ctx.fillStyle = this.occupied ? occupiedCellColor : this.color;
         ctx.fill();
+        if (!this.occupied && this.background != null)
+        {
+            ctx.globalAlpha = 0.03;
+            ctx.drawImage(this.background, this.posX, this.posY, this.tileSizeX, this.tileSizeY);
+        }
         ctx.globalAlpha = 1.0;
         ctx.strokeStyle = "#000000";
         ctx.stroke();
     }
 }
-const itemIconPrefix = "../loadout_assets/Items/";
 const statIconPrefix = "../assets/icons/";
+const itemIconPrefix = "../loadout_assets/Items/";
 const previewColor = "#ffffff";
 const previewColorBad = "#ffaaaa";
 const pickedColor = "#f0a0a0";
 const placedColor = "#000000";
 const roundPlacement = true;
+function getScale(outerX, outerY, innerX, innerY)
+{
+    if (innerX > innerY)
+    {
+        return Math.max(outerX, outerY) / innerX;
+    }
+    else
+    {
+        return Math.min(outerX, outerY) / innerY;
+    }
+}
 function Item(id = 0, x = 0, y = 0, sizeX = 1, sizeY = 1, rotation = 0, name = "#NAME", description = "#DESC", page = 0, itemData = null, orphan = false)
 {
     this.id = id;
@@ -1565,9 +1730,9 @@ function Item(id = 0, x = 0, y = 0, sizeX = 1, sizeY = 1, rotation = 0, name = "
         var height;
         if (drawSize1Tile)
         {
-            var ratio = (this.sizeX > this.sizeY ? Math.max(this.tileSizeX, this.tileSizeY) : Math.min(this.tileSizeX, this.tileSizeY)) / Math.max(this.sizeX, this.sizeY);
-            width = this.sizeX * ratio;
-            height = this.sizeY * ratio;
+            var scale = getScale(this.tileSizeX, this.tileSizeY, this.sizeX, this.sizeY);
+            width = this.sizeX * scale;
+            height = this.sizeY * scale;
             if (cell != null)
             {
                 if (width > height)
@@ -1595,7 +1760,7 @@ function Item(id = 0, x = 0, y = 0, sizeX = 1, sizeY = 1, rotation = 0, name = "
                 {
                     ctx.drawImage(this.icon, x, y, width, height);
                 }
-                catch
+                catch (ex)
                 {
                     this.dontRequestImage = true;
                 }
@@ -1632,7 +1797,7 @@ function Item(id = 0, x = 0, y = 0, sizeX = 1, sizeY = 1, rotation = 0, name = "
                 {
                     ctx.drawImage(this.icon, dx, dy, width, height);
                 }
-                catch
+                catch (ex)
                 {
                     this.dontRequestImage = true;
                 }
@@ -1661,6 +1826,27 @@ function Item(id = 0, x = 0, y = 0, sizeX = 1, sizeY = 1, rotation = 0, name = "
         if (opacity != 1)
             ctx.globalAlpha = 1.0;
     }
+    this.getBounds = function ()
+    {
+        var rtn = { x: 0, y: 0, width: 0, height: 0 };
+        if (this.page < 0 || this.page > Program.pages.pages.length) return rtn;
+        var cell = Program.pages.cell(this.page, this.x, this.y);
+        if (!cell) return rtn;
+        rtn.x = cell.posX;
+        rtn.y = cell.posY;
+        if (this.inSlot)
+        {
+            var scale = Math.min(this.tileSizeX, this.tileSizeY) / Math.max(this.sizeX, this.sizeY);
+            rtn.width = this.sizeX * scale;
+            rtn.height = this.sizeY * scale;
+        }
+        else
+        {
+            rtn.width = this.sizeX * this.tileSizeX;
+            rtn.height = this.sizeY * this.tileSizeY;
+        }
+        return rtn;
+    }
     this.onMouseMoved = function (x, y)
     {
         if (!this.isPicked) return false;
@@ -1677,7 +1863,6 @@ function Item(id = 0, x = 0, y = 0, sizeX = 1, sizeY = 1, rotation = 0, name = "
         if (this.isPicked)
         {
             var cell = Program.pages.getCellAtCoords(this.pickedLocationX + this.pickedOffsetX, this.pickedLocationY + this.pickedOffsetY, roundPlacement);
-            // trash item?
             if (!cell)
             {
                 cell = Program.pages.getCellAtCoords(this.pickedLocationX + this.pickedOffsetX, this.pickedLocationY + this.pickedOffsetY, !roundPlacement);
@@ -1694,7 +1879,7 @@ function Item(id = 0, x = 0, y = 0, sizeX = 1, sizeY = 1, rotation = 0, name = "
                     return;
                 }
             }
-            Program.inputConsumed = true;
+            Program.mouseBtn1Consumed = true;
             var moved = false;
             this.clearOccupiedFromSlots();
             if (this.page != cell.page || this.x != cell.coordX || this.y != cell.coordY || this.pendingRotation != this.rotation)
@@ -1751,7 +1936,7 @@ function Item(id = 0, x = 0, y = 0, sizeX = 1, sizeY = 1, rotation = 0, name = "
                     this.pickedOffsetX = cell.posX - x + (this.tileSizeX / 3.0) * ((this.sizeX - 1.0) / 3);
                     this.pickedOffsetY = cell.posY - y + (this.tileSizeY / 3.0) * ((this.sizeY - 1.0) / 3);
                 }
-                Program.inputConsumed = true;
+                Program.mouseBtn1Consumed = true;
                 Program.pages.pickedItem = this;
                 this.isPicked = true;
                 Program.invalidate();
@@ -1778,6 +1963,13 @@ function Item(id = 0, x = 0, y = 0, sizeX = 1, sizeY = 1, rotation = 0, name = "
     {
         this.clearOccupiedFromSlots();
         if (Program.pages.pickedItem == this) Program.pages.pickedItem = null;
+    }
+    this.isPointInside = function (x, y)
+    {
+        var bounds = this.getBounds();
+        if (x > bounds.x && x < bounds.x + bounds.width && y > bounds.y && y < bounds.y + bounds.height)
+            return bounds;
+        else return false;
     }
 }
 function onImageLoad()
@@ -1958,7 +2150,7 @@ function DualSelectWidget(leftText, rightText)
         ctx.fillText(this.leftText, x + this.width / 4, y + this.height / 2 + ltm.height / 2, this.width / 2)
         ctx.fillText(this.rightText, x + this.width * 3 / 4, y + this.height / 2 + rtm.height / 2, this.width / 2)
     }
-    this.onClick = function(x, y)  
+    this.onClick = function (x, y)  
     {
         if (x < this.width / 2)
             this.selected = this.selected == 1 ? 0 : 1;
@@ -2389,7 +2581,7 @@ function Popup(title = "TITLE", message = "", buttons = [new PopupButton("OK", 1
             if (this.buttons[b].keyCode == event.keyCode && this.buttons[b].onPress != null)
             {
                 this.buttons[b].onPress(this.buttons[b]);
-                Program.inputConsumed = true;
+                Program.mouseBtn1Consumed = true;
                 return;
             }
         }
@@ -2441,7 +2633,7 @@ function Popup(title = "TITLE", message = "", buttons = [new PopupButton("OK", 1
         {
             if (this.buttons[i].mouseInside(x, y))
             {
-                Program.inputConsumed = true;
+                Program.mouseBtn1Consumed = true;
                 this.buttons[i].onClick(this.buttons[i]);
                 return;
             }
@@ -2451,7 +2643,7 @@ function Popup(title = "TITLE", message = "", buttons = [new PopupButton("OK", 1
             if (x > this.widgets[i].posX && x < this.widgets[i].posX + this.widgets[i].width
                 && y > this.widgets[i].posY && y < this.widgets[i].posY + this.widgets[i].height)
             {
-                Program.inputConsumed = true;
+                Program.mouseBtn1Consumed = true;
                 this.widgets[i].onClick(x - this.widgets[i].posX, y - this.widgets[i].posY);
                 Program.invalidate();
                 return;
@@ -2461,7 +2653,7 @@ function Popup(title = "TITLE", message = "", buttons = [new PopupButton("OK", 1
         {
             if (this.textboxes[i].mouseInside(x, y))
             {
-                Program.inputConsumed = true;
+                Program.mouseBtn1Consumed = true;
                 this.textboxes[i].isFocused = true;
                 Program.invalidate();
             }
@@ -2602,12 +2794,13 @@ function call(data, handler, response = onSuccessSend, error = onSendError)
 {
     try
     {
+        if (!data) data = new Object();
         return $.ajax({
             type: "POST",
             url: "/Loadouts/" + handler,
             contentType: 'application/json; charset=utf-8',
             dataType: "json",
-            data: JSON.stringify(data ?? new Object()),
+            data: JSON.stringify(data),
             success: response,
             error: error
         });
@@ -2620,8 +2813,96 @@ function call(data, handler, response = onSuccessSend, error = onSendError)
         error(null, "Exception thrown", ex);
     }
 }
-
-
+const ctxMenuHeaderSize = 30;
+const ctxMenuFontSize = 12;
+const ctxButtonHeight = 20;
+const ctxMinWidth = 90;
+function ContextMenu(title = "TITLE", buttons = [])
+{
+    this.title = title;
+    this.buttons = buttons;
+    for (var i = 0; i < this.buttons.length; i++)
+        this.buttons[i].owner = this;
+    this.posX = 0;
+    this.posY = 0;
+    this.width = 0;
+    this.height = 0;
+    this.margin = 4;
+    this.radiusTop = getRadius2(4, 4, 0, 0);
+    this.radiusBottom = getRadius2(0, 0, 4, 4);
+    this.up = false;
+    this.left = false;
+    this.titleHeight = 0;
+    this.updateDims = function (ctx, x, y)
+    {
+        this.posX = x;
+        this.posY = y;
+        ctx.font = ctxMenuFontSize.toString() + "px Segoe UI";
+        this.width = this.margin;
+        var measure;
+        var highest = 0;
+        this.height = 0;
+        if (this.title.length > 0)
+        {
+            this.height = this.title.length > 0 ? ctxMenuHeaderSize : 0;
+            measure = m(ctx, this.title, ctxMenuFontSize);
+            highest = measure.width;
+            this.titleHeight = measure.up;
+        }
+        if (highest < ctxMinWidth) highest = ctxMinWidth;
+        for (var i = 0; i < this.buttons.length; i++)
+        {
+            this.height += this.buttons[i].height;
+            if (this.buttons[i].text)
+            {
+                measure = m(ctx, this.buttons[i].text, ctxMenuFontSize);
+                this.buttons[i].textHeight = measure.up;
+                if (highest < measure.width)
+                    highest = measure.width;
+            }
+        }
+        this.width += highest + this.margin;
+        this.up = this.posY + this.height > Program.canvas.height;
+        this.left = this.posX + this.width > Program.canvas.width;
+    }
+    this.render = function (ctx)
+    {
+        var px = this.left ? this.posX - this.width : this.posX;
+        var py = this.up ? this.posY - this.height : this.posY;
+        ctx.fillStyle = "#888888";
+        ctx.strokeStyle = "#000000";
+        ctx.font = ctxMenuFontSize.toString() + "px bold Segoe UI";
+        if (this.title.length > 0)
+        {
+            roundedRect(ctx, px, py, this.width, ctxMenuHeaderSize, this.radiusTop, true, true);
+            ctx.fillStyle = "#ffffff";
+            py += ctxMenuHeaderSize;
+        }
+        for (var i = 0; i < this.buttons.length; i++)
+        {
+            ctx.fillStyle = "#888888";
+            if (i == this.buttons.length - 1)
+            {
+                roundedRect(ctx, px, py, this.width, this.buttons[i].height, this.radiusBottom, true, true);
+            }
+            else
+            {
+                ctx.fillRect(px, py, this.width, this.buttons[i].height);
+                ctx.strokeRect(px, py, this.width, this.buttons[i].height);
+            }
+            ctx.fillStyle = "#ffffff";
+            ctx.fillText(this.buttons[i].text, px + this.margin, py + this.buttons[i].textHeight);
+            py += this.buttons[i].height;
+        }
+    }
+}
+function ContextButton(text = "BUTTON", callback)
+{
+    this.height = ctxButtonHeight;
+    this.text = text;
+    this.callback = callback;
+    this.textHeight = 0;
+}
 const dictionaryAnimTimeSec = 0.2;
 const dictionaryAccent1 = "#9264cd";
 const dictionaryAccent2 = "#532c87";
@@ -2823,7 +3104,7 @@ function DictionaryEntry(itemID = 0, itemData = null, owner = null)
         posy += height + this.margin;
         var pw = w - this.margin * 2;
         var ph = h - this.margin * 6;
-        var scale = Math.min(pw, ph) / Math.max(this.itemData.SizeX, this.itemData.SizeY);
+        var scale = getScale(pw, ph, this.itemData.SizeX, this.itemData.SizeY);
         var pw2 = this.itemData.SizeX * scale;
         var ph2 = this.itemData.SizeY * scale;
         var py = posy, px = posx;
@@ -2854,7 +3135,7 @@ function DictionaryEntry(itemID = 0, itemData = null, owner = null)
             {
                 ctx.drawImage(this.icon, px, py, pw2, ph2);
             }
-            catch
+            catch (ex)
             {
                 this.dontRequestImage = true;
             }
@@ -2885,7 +3166,7 @@ function DictionaryEntry(itemID = 0, itemData = null, owner = null)
         Program.dictionary.close();
     }
 }
-const blacklistedItems = [ 1522 ]
+const blacklistedItems = [1522];
 function Dictionary()
 {
     this.gridSizeX = 8;
@@ -3200,7 +3481,7 @@ function Dictionary()
                     this.loadItems();
                     Program.invalidate();
                 }
-                Program.inputConsumed = true;
+                Program.mouseBtn1Consumed = true;
                 return;
             }
             else if (x > this.finalPosX + this.nextX && x < this.finalPosX + this.nextX + dictionaryButtonSize * 1.5 && y > this.buttonY && y < this.buttonY + dictionaryButtonSize)
@@ -3211,7 +3492,7 @@ function Dictionary()
                     this.loadItems();
                     Program.invalidate();
                 }
-                Program.inputConsumed = true;
+                Program.mouseBtn1Consumed = true;
                 return;
             }
             else
@@ -3222,7 +3503,7 @@ function Dictionary()
                         y > this.posY + this.entries[e].posY && y < this.posY + this.entries[e].posY + this.entries[e].height)
                     {
                         this.entries[e].onClick(x, y);
-                        Program.inputConsumed = true;
+                        Program.mouseBtn1Consumed = true;
                         Program.invalidate();
                         break;
                     }
@@ -3273,7 +3554,7 @@ function Dictionary()
             Program.moveConsumed = true;
             Program.invalidate();
         }
-        if (this.nextHovered || this.backHovered)
+        else if (this.nextHovered || this.backHovered)
         {
             this.nextHovered = false;
             this.backHovered = false;
@@ -3969,4 +4250,99 @@ function m(ctx, text, defaultHeight = 14)
         down: ms.actualBoundingBoxDescent ? ms.actualBoundingBoxDescent : 0,
         raw: ms
     };
+}
+const validClasses = []
+function sendKit(btn)
+{
+    var popup = btn.owner;
+    if (!popup)
+    {
+        console.log("No button owner");
+        return false;
+    }
+    var username = popup.textboxes[0];
+    var s64 = popup.textboxes[1];
+    var kitname = popup.textboxes[2];
+    var kitclass = popup.textboxes[3];
+    if (!username || !s64 || !kitname || !kitclass) return false;
+    if (username.text.length == 0 || s64.text.length !== 17 || kitname.text.length === 0 || kitclass.text.length === 0) return false;
+
+    var kit = {
+        PlayerName: username.text,
+        Steam64: BigInt(s64.text),
+        KitName: kitname.text,
+        Class: kitclass.text,
+        items: [],
+        clothes: []
+    }
+    var req = call(kit, "VerifyKitData").done(() =>
+    {
+        if (req.responseJSON.Success && req.responseJSON.State && req.responseJSON.State.Valid)
+        {
+            for (var p = 0; p < Program.pages.pages.length; p++)
+            {
+                var page = Program.pages.pages[p].page;
+                if (!page.isSlot || page.pageID === PAGES.PRIMARY || page.pageID === PAGES.SECONDARY)
+                {
+                    for (var i = 0; i < page.items.length; i++)
+                    {
+                        var item = page.items[i];
+                        kit.items.push({ id: item.id, x: item.x, y: item.y, rotation: item.rotation, amount: item.itemData ? item.itemData.Amount : 1, page: item.pageID });
+                    }
+                }
+                else
+                {
+                    var type = 0;
+                    if (page.pageID === PAGES.C_PANTS)
+                    {
+                        type = 1;
+                    }
+                    else if (page.pageID === PAGES.C_VEST)
+                    {
+                        type = 2;
+                    }
+                    else if (page.pageID === PAGES.C_HAT)
+                    {
+                        type = 3;
+                    }
+                    else if (page.pageID === PAGES.C_MASK)
+                    {
+                        type = 4;
+                    }
+                    else if (page.pageID === PAGES.C_BACKPACK)
+                    {
+                        type = 5;
+                    }
+                    else if (page.pageID === PAGES.C_GLASSES)
+                    {
+                        type = 6;
+                    }
+                    else continue;
+                    kit.clothes.push({ type: type, id: item.id });
+                }
+            }
+            call(kit, "ConfirmKitData").done(() =>
+            {
+                if (req.responseJSON.Success && req.responseJSON.State)
+                {
+
+                    console.log(req.responseJSON.State.KitName + " submited for verification.");
+                    if (window.history.replaceState)
+                    {
+                        window.history.replaceState(null, "", "Loadouts/Editor?kit=" + req.responseJSON.State.KitName);
+                        if (Program.popup)
+                            Program.popup.close();
+                    }
+                }
+                else
+                {
+                    console.warn("Failed to verify kit.");
+                }
+            });
+        }
+        else
+        {
+            console.warn("Failed to verify kit data.");
+        }
+    });
 }

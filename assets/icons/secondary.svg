@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="768" height="512" viewBox="0 0 768 512">
+  <image width="1024" height="1024" transform="translate(192.119 64.119) scale(0.375)" xlink:href="../../loadout_assets/Items/31326.png"/>
+  <g>
+    <rect x="569" y="145" width="4" height="35" fill="#d1d3d4"/>
+    <polygon points="541 121 538 133 559 133 558 121 541 121" fill="#d1d3d4"/>
+    <rect x="241" y="123" width="24" height="13" fill="#d1d3d4"/>
+    <rect x="219" y="379" width="98" height="12" fill="#d1d3d4"/>
+    <path d="M442,132v4H359v-4H229l-17,54-16,15-1,9,34,6,16,24-27,85-9,54H315V361l17-81,10-5,23,6,75-3-6-14V231l1-12,9-6h71v-6h54l1-28V132ZM425,263l-9,6-50,3-21-9-5-20,4-16,11-8h66l4,9Z" fill="#fff"/>
+    <rect x="359" y="136" width="83" height="35" fill="#d1d3d4"/>
+  </g>
+</svg>
