@@ -1,0 +1,646 @@
+import { Program } from "./editor.js";
+import { NotImplementedException, Radius, TextMeasurement, roundedRectPath, onImageLoad } from "./util.js";
+import * as C from "./const.js";
+/**
+ * Abstract page class
+ */
+export class Page
+{
+    /**
+     * @callback CanContainItemDelegate
+     * @param {ItemData} Item Deciding item
+     * @returns {boolean} Can the page contain the item
+     */
+
+    /**
+     * @callback ItemModifierDelegate
+     * @param {Item} Item Modified item
+     * @returns {void}
+     */
+
+    /** @type {number} */
+    type;
+    /** Page index
+     *  @type {number} 
+     **/
+    page;
+    /**
+     * Determines whether an item can be placed in the page's slot(s).
+     * @type {CanContainItemDelegate}
+     */
+    canEquip;
+    /** @type {number} */
+    columnX;
+    /**
+     * Corresponds with Unturned's page IDs.
+     * @type {number}
+     */
+    pageID;
+    /** @type {number} */
+    posX;
+    /** @type {number} */
+    posY;
+    /** @type {number} */
+    tileSizeX;
+    /** @type {number} */
+    tileSizeY;
+    /** @type {number} */
+    gridSizeX;
+    /** @type {number} */
+    gridSizeY;
+    /** @type {number} */
+    pageSizeY;
+    /** 
+     * Number of cells in the X direction
+     * @type {number} */
+    sizeX;
+    /** 
+     * Number of cells in the Y direction
+     * @type {number} */
+    sizeY;
+    /** @type {string} */   
+    title;
+    /** @type {Cell[][]} */ 
+    cells;
+    /** @type {Item[]} */
+    items;
+    /**
+     * @param {number} page
+     * @param {number} type
+     * @param {number} pageID
+     * @param {number} posX
+     * @param {number} posY
+     * @param {number} sizeX
+     * @param {number} sizeY
+     * @param {string} title
+     * @param {number} tileSizeX
+     * @param {number} tileSizeY
+     * @param {CanContainItemDelegate} canEquip
+     */
+    constructor(type, page, pageID, sizeX, sizeY, title, tileSizeX, tileSizeY, canEquip)
+    {
+        this.type = type;
+        this.page = page;
+        this.pageID = pageID;
+        this.posX = 0;
+        this.posY = 0;
+        this.sizeX = sizeX;
+        this.sizeY = sizeY;
+        this.title = title;
+        this.tileSizeX = tileSizeX;
+        this.tileSizeY = tileSizeY;
+        this.canEquip = canEquip;
+        this.items = [];
+    }
+    /**
+     * Renders the background of the page (cells). Items will be rendered later.
+     * @abstract
+     * @param {CanvasRenderingContext2D} ctx Rendering Context
+     */
+    renderBackground(ctx)
+    {
+        throw new NotImplementedException(this.renderBackground, this);
+    }
+
+    /**
+     * @abstract
+     * @param {CanvasRenderingContext2D} ctx Rendering Context
+     * @param {number} x X Position
+     * @param {number} y Y Position
+     * @param {number} columnX Width of the widest page in the column
+     */
+    updateDims(ctx, x, y, columnX)
+    {
+        throw new NotImplementedException(this.updateDims, this);
+    }
+
+    /**
+     * Renders the foreground of the page (items).
+     * @param {CanvasRenderingContext2D} ctx Rendering Context
+     */
+    renderForeground(ctx)
+    {
+        for (var i = 0; i < this.items.length; i++)
+        {
+            this.items[i].render(ctx);
+        }
+    }
+
+    /**
+     * Add an item to the page.
+     * @abstract
+     * @param {Item} item
+     * @param {ItemModifierDelegate} mod Apply changes to the item object before adding it. Nullable.
+     * @returns {boolean | Item} The item if successful, else false.
+     */
+    addItem(item, mod)
+    {
+        throw new NotImplementedException(this.addItem, this);
+    }
+
+    /**
+     * Check if a set of cell coordinates are within the cell range.
+     * @param {number} x
+     * @param {number} y
+     * @returns {boolean} If the coords are valid.
+     */
+    checkCoords(x, y)
+    {
+        return this.cells.length !== 0 && this.cells[0].length !== 0 && x >= 0 && y >= 0 && Number.isInteger(x) && Number.isInteger(y) && x < this.cells.length && y < this.cells[x].length;
+    }
+
+    /**
+     * Returns the cell at the specified coordinates.
+     * @param {number} x
+     * @param {number} y
+     * @returns {Cell | boolean} The cell if the coordinates are valid, otherwise false.
+     */
+    cell(x, y)
+    {
+        return this.checkCoords(x, y) ? this.cells[x][y] : false;
+    }
+    /**
+     * Removes an item from the page and properly disposes of it.
+     * @param {Item} item
+     * @returns {boolean} True if the item was found and removed, false otherwise.
+     */
+    removeItem(item)
+    {
+        for (var i = 0; i < this.items.length; i++)
+        {
+            if (this.items[i].x === item.x && this.items[i].y === item.y)
+            {
+                this.items[i].dispose();
+                this.items.splice(i, 1);
+                return true;
+            }
+        }
+        return false;
+    }
+    /**
+     * Gets the cell at the given canvas relative position.
+     * @abstract
+     * @param {number} x X position in canvas coordinates.
+     * @param {number} y Y position in canvas coordinates.
+     * @param {boolean} round Should it round to the closest square or floor to the square.
+     * @returns {Cell | boolean} Cell at position or false if not found
+     */
+    getCellFromPosition(x, y, round)
+    {
+        throw new NotImplementedException(this.getCellFromPosition, this);
+    }
+}
+
+export class Pages
+{
+
+}
+export class ContainerPage extends Page
+{
+    /** @type {number} */
+    maxSizeX;
+    /** @type {number} */
+    textYOffset;
+    /** @type {number} */
+    gridStartY;
+    /** @type {Radius} */
+    titleRadius;
+    /**
+     * @param {number} type
+     * @param {number} page
+     * @param {number} pageID
+     * @param {number} sizeX
+     * @param {number} sizeY
+     * @param {string} title
+     * @param {number} tileSize
+     * @param {CanContainItemDelegate} canEquip
+     */
+    constructor(type, page, pageID, sizeX, sizeY, title, tileSize, canEquip = () => true)
+    {
+        super(type, page, pageID, sizeX, sizeY, title, tileSize, tileSize, canEquip);
+        this.type = 0;
+        this.titleRadius = new Radius(C.titleRadius);
+        this.cells = [];
+        var ts = Math.min(this.tileSizeX, this.tileSizeY);
+        for (var x = 0; x < this.sizeX; x++)
+        {
+            this.cells.push([]);
+            var xpos = this.posX + (x * (this.tileSizeX + C.margin));
+            for (var y = 0; y < this.sizeY; y++)
+            {
+                this.cells[x].push(new InventoryCell(this.page, xpos, this.gridStartY + (y * (this.tileSizeY + C.margin)), ts, x, y));
+            }
+        }
+    }
+    /**
+     * Renders the background of the page (cells). Items will be rendered later.
+     * @param {CanvasRenderingContext2D} ctx Rendering Context
+     */
+    renderBackground(ctx)
+    {
+        ctx.globalAlpha = 0.5;
+        ctx.fillStyle = "#0f0f0f";
+        roundedRect(ctx, this.posX, this.posY, this.gridSizeX, C.titleSize, this.titleRadius, true, false);
+        ctx.globalAlpha = 1.0;
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold ' + C.pageTitleFontSize.toString() + 'px Segoe UI';
+        ctx.fillText(this.title, this.posX + this.gridSizeX / 2, this.posY + this.textYOffset, this.size);
+        for (var x = 0; x < this.sizeX; x++)
+        {
+            if (!this.cells[x]) continue;
+            for (var y = 0; y < this.sizeY; y++)
+            {
+                if (!this.cells[y]) continue;
+                this.cells[x][y].render(ctx);
+            }
+        }
+    }
+
+    /**
+     * Gets the cell at the given canvas relative position.
+     * @param {number} x X position in canvas coordinates.
+     * @param {number} y Y position in canvas coordinates.
+     * @param {boolean} round Should it round to the closest square or floor to the square.
+     * @returns {InventoryCell | boolean} Cell at position or false if not found
+     */
+    getCellFromPosition(x, y, round)
+    {
+        if (x < this.posX || x > this.posX + this.gridSizeX) return false;
+        if (y < this.gridStartY || y > this.gridStartY + this.gridSizeY) return false;
+        if (round)
+        {
+            var cell = this.cells[Math.round((x - this.posX) / (this.tileSizeX + C.margin))];
+            if (cell == null)
+                cell = this.cells[Math.floor((x - this.posX) / (this.tileSizeX + C.margin))];
+            if (cell == null)
+                cell = this.cells[Math.ceil((x - this.posX) / (this.tileSizeX + C.margin))];
+            if (cell == null) return false;
+            var cell2 = cell[Math.round((y - this.gridStartY) / (this.tileSizeY + C.margin))];
+            if (cell2 == null)
+                cell2 = cell[Math.floor((y - this.gridStartY) / (this.tileSizeY + C.margin))];
+            if (cell2 == null)
+                cell2 = cell[Math.ceil((y - this.gridStartY) / (this.tileSizeY + C.margin))];
+            if (cell2 == null) return false;
+            return cell2;
+        }
+        else
+        {
+            var cell = this.cells[Math.floor((x - this.posX) / (this.tileSizeX + C.margin))];
+            if (cell == null) return false;
+            cell = cell[Math.floor((y - this.gridStartY) / (this.tileSizeY + C.margin))];
+            if (cell == null) return false;
+            else return cell;
+        }
+    }
+
+    /**
+     * Add an item to the page.
+     * @param {Item} item
+     * @param {ItemModifierDelegate} mod Apply changes to the item object before adding it. Nullable.
+     * @returns {boolean | Item} The item if successful, else false.
+     */
+    addItem(item, mod)
+    {
+        if (item !== null)
+        {
+            if (this.checkCoords(item.x, item.y))
+            {
+                if (mod !== null)
+                    mod(item);
+                item.tileSizeX = this.tileSizeX;
+                item.tileSizeY = this.tileSizeY;
+                item.inSlot = false;
+                if (!this.items.includes(item))
+                    this.items.push(item);
+                item.applyOccupiedToSlots();
+                Program.invalidate();
+                return item;
+            }
+            else
+            {
+                console.warn("Item added to invalid position");
+                console.warn(item);
+                return false;
+            }
+        }
+        else
+        {
+            console.error("Item null in addItem.");
+            return false;
+        }
+    }
+
+    /**
+     * @param {CanvasRenderingContext2D} ctx Rendering Context
+     * @param {number} x X Position
+     * @param {number} y Y Position
+     * @param {number} columnX Width of the widest page in the column
+     */
+    updateDims(ctx, x, y, columnX)
+    {
+        this.maxSizeX = columnX;
+        this.posX = x;
+        this.posY = y;
+        this.gridSizeX = this.sizeX * (this.tileSizeX + C.margin);
+        this.gridSizeY = this.sizeY * (this.tileSizeY + C.margin);
+        this.gridStartY = this.posY + C.titleToGridDistance + C.titleSize;
+        this.pageSizeY = this.gridSizeY + C.titleToGridDistance + C.titleSize;
+        this.textYOffset = TextMeasurement.height(ctx, this.title, C.pageTitleFontSize)
+    }
+}
+
+export class SlotPage extends Page
+{
+    /** @type {ContainerPage} */
+    child;
+    /** @type {string} */
+    backgroundIconSrc;
+
+    /**
+     * @param {number} type
+     * @param {number} page
+     * @param {number} pageID
+     * @param {number} tileSizeX
+     * @param {number} tileSizeY
+     * @param {string} title
+     * @param {CanContainItemDelegate} canEquip
+     * @param {string} background Background image path
+     */
+    constructor(type, page, pageID, tileSizeX, tileSizeY, title, canEquip = null, background = 'none')
+    {
+        super(type, page, pageID, sizeX, sizeY, title, tileSizeX, tileSizeY, canEquip);
+        this.type = 1;
+        this.backgroundIconSrc = background;
+        this.cells = [[new SlotCell(this.page, this.posX, this.gridStartY, this.tileSizeX, this.tileSizeY, this.backgroundIconSrc)]];
+    }
+    /**
+     * Renders the background of the page (cells). Items will be rendered later.
+     * @param {CanvasRenderingContext2D} ctx Rendering Context
+     */
+    renderBackground(ctx)
+    {
+        this.cells[0][0].render(ctx);
+    }
+    /**
+     * Renders the foreground of the page (items).
+     * @param {CanvasRenderingContext2D} ctx Rendering Context
+     */
+    renderForeground(ctx)
+    {
+        if (this.items.length > 0)
+            this.items[0].render(ctx);
+    }
+    /**
+     * Gets the cell at the given canvas relative position.
+     * @param {number} x X position in canvas coordinates.
+     * @param {number} y Y position in canvas coordinates.
+     * @param {boolean} round Should it round to the closest square or floor to the square.
+     * @returns {SlotCell | boolean} Cell at position or false if not found
+     */
+    getCellFromPosition(x, y, round)
+    {
+        if (round)
+        {
+            return  x > this.posX - C.widthMarginBetweenPages / 2 && 
+                    x < this.posX + C.widthMarginBetweenPages / 2 + this.gridSizeX &&
+                    y > this.posY - C.heightMarginBetweenPages / 2 &&
+                    y < this.posY + C.heightMarginBetweenPages / 2 + this.gridSizeY ? 
+                        this.cells[0][0] : false;
+        }
+        else
+        {
+            return  x > this.posX && 
+                    x < this.posX + this.gridSizeX &&
+                    y > this.posY &&
+                    y < this.posY + this.gridSizeY ? 
+                        this.cells[0][0] : false;
+        }
+    }
+
+    /**
+     * Add an item to the page.
+     * @param {Item} item
+     * @param {ItemModifierDelegate} mod Apply changes to the item object before adding it. Nullable.
+     * @returns {boolean | Item} The item if successful, else false.
+     */
+    addItem(item, mod)
+    {
+        if (this.items.length > 0)
+        {
+            console.warn("Slot occupied.");
+            return false;
+        }
+        if (item !== null)
+        {
+            if (mod !== null)
+                mod(item);
+            item.x = 0;
+            item.y = 0;
+            item.rotation = 0;
+            item.inSlot = true;
+            this.cells[0][0].occupied = true;
+            this.items.push(item);
+            Program.invalidate();
+            return item;
+        }
+        else
+        {
+            console.error("Item null in addItem.");
+            return false;
+        }
+    }
+
+    /**
+     * @param {CanvasRenderingContext2D} ctx Rendering Context
+     * @param {number} x X Position
+     * @param {number} y Y Position
+     * @param {number} columnX Width of the widest page in the column
+     */
+    updateDims(ctx, x, y, columnX)
+    {
+        this.maxSizeX = columnX;
+        this.posX = x;
+        this.posY = y;
+        this.gridSizeX = this.tileSizeX;
+        this.gridSizeY = this.tileSizeY;
+        this.pageSizeY = this.tileSizeY;
+    }
+}
+
+export class Cell
+{
+    /** @type {number} */
+    type;
+    /** @type {string} */
+    get notation()
+    {
+        return this.title + "!" + C.alphabet[this.coordX] + (this.coordX + 1).toString();
+    }
+    /** @type {boolean} */
+    occupied;
+    /** @type {number} */
+    coordX;
+    /** @type {number} */
+    coordY;
+    /** @type {number} */
+    posX;
+    /** @type {number} */
+    posY;
+    /** @type {number} */
+    tileSizeX;
+    /** @type {number} */
+    tileSizeY;
+    /** @type {number} */
+    page;
+    /** @type {string} */
+    displayColor;
+    /**
+     * @param {number} page 
+     * @param {number} posX 
+     * @param {number} posY 
+     * @param {number} tileSizeX 
+     * @param {number} tileSizeY 
+     * @param {number} coordX 
+     * @param {number} coordY 
+     */
+    constructor(page, tileSizeX, tileSizeY, coordX, coordY)
+    {
+        this.page = page;
+        this.posX = 0;
+        this.posY = 0;
+        this.tileSizeX = tileSizeX;
+        this.tileSizeY = tileSizeY;
+        this.coordX = coordX;
+        this.coordY = coordY;
+        this.displayColor = C.defaultCellColor;
+        this.occupied = false;
+        this.type = 0;
+    }
+    /**
+     * @returns {boolean} Occupied state
+     */
+    checkOccupied()
+    {
+        throw new NotImplementedException(this.checkOccupied, this);
+    }
+    
+    /**
+     * @param {CanvasRenderingContext2D} ctx Rendering context
+     */
+    render(ctx)
+    {
+        roundedRectPath(ctx, this.posX, this.posY, this.tileSizeX, this.tileSizeY, this.radius);
+        ctx.globalAlpha = 0.5;
+        ctx.fillStyle = this.occupied ? C.occupiedCellColor : this.displayColor;
+        ctx.fill();
+        ctx.globalAlpha = 1.0;
+        ctx.strokeStyle = "#000000";
+        ctx.stroke();
+    }
+}
+
+export class InventoryCell extends Cell
+{
+    /**
+     * @param {number} page
+     * @param {number} coordX
+     * @param {number} coordY
+     */
+    constructor(page, coordX, coordY)
+    {
+        super(page, C.tileSize, C.tileSize, coordX, coordY);
+    }
+    /**
+     * @returns {boolean} Occupied state
+     */
+    checkOccupied()
+    {
+        if (Program.pages == null || Program.pages.pages == null || Program.pages.pages[this.page] == null) return false;
+        for (var i = 0; i < Program.pages.pages[this.page].page.items.length; i++)
+        {
+            var item = Program.pages.pages[this.page].page.items[i];
+            if (item.x === this.coordX && item.y === this.coordY) return true;
+            var bottomX = item.x + item.sizes.width;
+            var bottomY = item.y + item.sizes.height;
+            if (this.coordX > item.x && this.coordX < bottomX && this.coordY > item.y && this.coordY < bottomY) return true;
+        }
+        return false;
+    }
+}
+
+export class SlotCell extends Cell
+{
+    /** @type {boolean} */
+    dontRequestImage;
+    /** @type {string} */
+    backgroundIconSrc;
+    /** @type {HTMLImageElement} */
+    background;
+    /**
+     * @param {number} page 
+     * @param {number} sizeMultX 
+     * @param {number} sizeMultY 
+     * @param {number} coordX 
+     * @param {number} coordY
+     * @param {string} background
+     */
+    constructor(page, sizeMultX, sizeMultY, coordX, coordY, background = 'none')
+    {
+        super(page, sizeMultX * C.tileSize, sizeMultY * C.tileSize, coordX, coordY);
+        this.type = 1;
+        this.backgroundIconSrc = C.statIconPrefix + background;
+        if (this.background && this.background !== 'none')
+            this.getIcon();
+    }
+    /**
+     * @returns {boolean} Occupied state
+     */
+    checkOccupied()
+    {
+        return Program.pages !== null && Program.pages.pages.length <= this.page && Program.pages[this.page].page.items.length > 0;
+    }
+    /**
+     * Request background icon if it exists
+     * @returns {void}
+     */
+    getIcon()
+    {
+        if (this.dontRequestImage || this.backgroundIconSrc === null || this.backgroundIconSrc === "none") return;
+        if (!Program.pages.pages[this.page]) return;
+        var id = Program.pages.pages[this.page].page.pageID * -1;
+        this.background = Program.pages.iconCache.get(id);
+        if (!this.background)
+        {
+            this.background = new Image(this.tileSizeX, this.tileSizeY);
+            this.background.id = id;
+            this.background.onload = onImageLoad;
+            this.background.src = this.backgroundIconSrc;
+            Program.pages.iconCache.set(this.background.id, this.background);
+        }
+    }
+    render(ctx)
+    {
+        if (!this.occupied && this.background == null && !this.dontRequestImage)
+        {
+            this.getIcon();
+        }
+        roundedRectPath(ctx, this.posX, this.posY, this.tileSizeX, this.tileSizeY, C.SLOT_RADIUS);
+        ctx.globalAlpha = 0.5;
+        ctx.fillStyle = this.occupied ? occupiedCellColor : this.color;
+        ctx.fill();
+        if (!this.occupied && this.background != null)
+        {
+            ctx.globalAlpha = 0.03;
+            ctx.drawImage(this.background, this.posX, this.posY, this.tileSizeX, this.tileSizeY);
+        }
+        ctx.globalAlpha = 1.0;
+        ctx.strokeStyle = "#000000";
+        ctx.stroke();
+    }
+}
+
+export class Item
+{
+    
+}

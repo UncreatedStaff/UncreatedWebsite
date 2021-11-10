@@ -1,23 +1,7 @@
-import { Radius, WrappedLine, CenteredTextData, roundedRect, TextMeasurement } from "./util";
-import { Program } from "./editor";
+import * as C from "./const.js";
+import { Radius, WrappedLine, CenteredTextData, roundedRect, TextMeasurement } from "./util.js";
+import { Program } from "./editor.js";
 
-export const popupAnimTimeSec = 0.3;
-export const popupBkgrTransparency = 0.375;
-export const popupHeaderHeight = 40;
-export const popupTextboxHeight = 65;
-export const popupButtonHeight = 80;
-export const popupDescLineSpacing = 4;
-export const popupDescTextSize = 16;
-export const popupTitleTextSize = 20;
-export const popupButtonTextSize = 16;
-export const popupTextboxTextSize = 16;
-export const popupAccent1 = "#9264cd";
-export const popupAccent2 = "#532c87";
-export const popupAccent3 = "#bb9fe0";
-export const popupAccent4 = "#d6c5ec";
-export const popupBackground = "#0d0d0d";
-export const expConst = 2.1899243665;
-export const blinkTime = 1.5;
 /**
  * Customizable popup message.
  */
@@ -124,27 +108,27 @@ export class Popup
         this.width = Program.canvas.width / 3;
         this.posX = Program.canvas.width / 2 - this.width / 2;
         this.#startPosY = Program.canvas.height * 1.05;
-        ctx.font = popupDescTextSize.toString() + 'px Segoe UI';
+        ctx.font = C.popupDescTextSize.toString() + 'px Segoe UI';
         ctx.textAlign = 'left';
-        this.#wrappedMessage = WrappedLine.wrapText(ctx, this.message, this.width - this.margin * 2, popupDescTextSize);
+        this.#wrappedMessage = WrappedLine.wrapText(ctx, this.message, this.width - this.margin * 2, C.popupDescTextSize);
         this.#textHeight = 0;
         for (var i = 0; i < this.#wrappedMessage.length; i++)
-            this.#textHeight += this.#wrappedMessage[i].height + popupDescLineSpacing;
+            this.#textHeight += this.#wrappedMessage[i].height + C.popupDescLineSpacing;
         var wh = 0;
         for (var i = 0; i < this.widgets.length; i++)
             wh += this.widgets[i].defaultHeight;
-        this.height = popupHeaderHeight + this.margin + this.textHeight + this.margin + (this.margin + popupTextboxHeight) * this.textboxes.length + this.margin + wh + (this.buttons.length == 0 ? 0 : popupButtonHeight + this.margin);
+        this.height = C.popupHeaderHeight + this.margin + this.textHeight + this.margin + (this.margin + C.popupTextboxHeight) * this.textboxes.length + this.margin + wh + (this.buttons.length == 0 ? 0 : C.popupButtonHeight + this.margin);
         this.#finalPosY = Program.canvas.height / 2 - this.height / 2;
-        ctx.font = 'bold ' + popupTitleTextSize + 'px Segoe UI';
+        ctx.font = 'bold ' + C.popupTitleTextSize.toString() + 'px Segoe UI';
         ctx.textAlign = 'left';
-        this.#titleYoffset = CenteredTextData.centerTextHeight(ctx, this.title, popupHeaderHeight, popupTitleTextSize);
+        this.#titleYoffset = CenteredTextData.centerTextHeight(ctx, this.title, C.popupHeaderHeight, C.popupTitleTextSize);
         this.#buttonWidth = ((this.width - this.#margin) / this.buttons.length) - this.#margin;
         for (var i = 0; i < this.buttons.length; i++)
-            this.buttons[i].updateDims(ctx, this.#buttonWidth, popupButtonHeight);
+            this.buttons[i].updateDims(ctx, this.#buttonWidth, C.popupButtonHeight);
         for (var i = 0; i < this.widgets.length; i++)
             this.widgets[i].updateDims(ctx, this.width - this.#margin * 2, this.widgets[i].defaultHeight);
         for (var i = 0; i < this.textboxes.length; i++)
-            this.textboxes[i].updateDims(ctx, this.width - this.#margin * 2, popupTextboxHeight);
+            this.textboxes[i].updateDims(ctx, this.width - this.#margin * 2, C.popupTextboxHeight);
         this.inited = true;
     }
     /**
@@ -210,7 +194,7 @@ export class Popup
                 else
                 {
                     this.#renderAt(ctx, this.posX, this.#lerp(), this.#currentAnimAlpha);
-                    this.#currentAnimAlpha += dt / popupAnimTimeSec;
+                    this.#currentAnimAlpha += dt / C.popupAnimTimeSec;
                     return true;
                 }
             }
@@ -228,7 +212,7 @@ export class Popup
                 else
                 {
                     this.#renderAt(ctx, this.posX, this.#lerp(), this.#currentAnimAlpha);
-                    this.#currentAnimAlpha -= dt / popupAnimTimeSec;
+                    this.#currentAnimAlpha -= dt / C.popupAnimTimeSec;
                     return true;
                 }
             }
@@ -262,7 +246,7 @@ export class Popup
      */
     #exp(alpha)
     {
-        return Math.pow(expConst, Math.pow(expConst, 0.5 * alpha) * alpha - 1) - Math.pow(expConst, -1);
+        return Math.pow(C.expConst, Math.pow(C.expConst, 0.5 * alpha) * alpha - 1) - Math.pow(C.expConst, -1);
     }
     /**
      * Render the popup at its current position.
@@ -275,36 +259,36 @@ export class Popup
     {
         if (bkgrAlpha > 0)
         {
-            ctx.globalAlpha = bkgrAlpha * popupBkgrTransparency;
+            ctx.globalAlpha = bkgrAlpha * C.popupBkgrTransparency;
             ctx.fillStyle = "#000000";
             ctx.fillRect(0, 0, Program.canvas.width, Program.canvas.height);
         }
         ctx.globalAlpha = 1.0;
         if (y >= Program.canvas.height) return;
-        ctx.fillStyle = popupBackground;
-        ctx.strokeStyle = popupAccent1;
+        ctx.fillStyle = C.popupBackground;
+        ctx.strokeStyle = C.popupAccent1;
         roundedRect(ctx, x, y, this.width, this.height, this.#radius, true, true);
         ctx.strokeStyle = "#000000";
-        ctx.fillStyle = popupAccent1;
-        roundedRect(ctx, x, y, this.width, popupHeaderHeight, this.#headerRadius, true, false);
+        ctx.fillStyle = C.popupAccent1;
+        roundedRect(ctx, x, y, this.width, C.popupHeaderHeight, this.#headerRadius, true, false);
         ctx.fillStyle = "#ffffff";
-        ctx.font = 'bold ' + popupTitleTextSize + 'px Segoe UI';
+        ctx.font = 'bold ' + C.popupTitleTextSize.toString() + 'px Segoe UI';
         ctx.textAlign = 'left';
-        var ypos = y + popupHeaderHeight;
+        var ypos = y + C.popupHeaderHeight;
         ctx.fillText(this.title, x + this.#margin, y + this.#titleYoffset, this.width - this.#margin * 2);
-        ctx.font = popupDescTextSize.toString() + 'px Segoe UI';
+        ctx.font = C.popupDescTextSize.toString() + 'px Segoe UI';
         ypos += this.#margin;
         for (var i = 0; i < this.#wrappedMessage.length; i++)
         {
             ypos += this.#wrappedMessage[i].height;
             ctx.fillText(this.#wrappedMessage[i].text, x + this.#margin, ypos, this.width - this.#margin * 2);
-            if (i != this.#wrappedMessage.length - 1) ypos += popupDescLineSpacing;
+            if (i != this.#wrappedMessage.length - 1) ypos += C.popupDescLineSpacing;
         }
         for (var i = 0; i < this.textboxes.length; i++)
         {
             ypos += this.#margin;
-            this.textboxes[i].renderAt(ctx, x + this.#margin, ypos, this.width - this.#margin * 2, popupTextboxHeight);
-            ypos += popupTextboxHeight;
+            this.textboxes[i].renderAt(ctx, x + this.#margin, ypos, this.width - this.#margin * 2, C.popupTextboxHeight);
+            ypos += C.popupTextboxHeight;
         }
         for (var i = 0; i < this.widgets.length; i++)
         {
@@ -317,7 +301,7 @@ export class Popup
         var xpos = x + this.#margin;
         for (var i = 0; i < this.buttons.length; i++)
         {
-            this.buttons[i].renderAt(ctx, xpos, ypos, this.#buttonWidth, popupButtonHeight);
+            this.buttons[i].renderAt(ctx, xpos, ypos, this.#buttonWidth, C.popupButtonHeight);
             xpos += this.#margin + this.#buttonWidth;
         }
     }
@@ -527,12 +511,14 @@ export class PopupButton
 
     /**
      * @param {CanvasRenderingContext2D} ctx 
+     * @param {number} w Width
+     * @param {number} h Height
      */
-    updateDims(ctx)
+    updateDims(ctx, w, h)
     {
-        ctx.font = 'bold ' + popupButtonTextSize.toString() + 'px Segoe UI';
+        ctx.font = 'bold ' + C.popupButtonTextSize.toString() + 'px Segoe UI';
         ctx.textAlign = 'center';
-        this.#center = CenteredTextData.centerTextHeight(ctx, this.text, h, popupButtonTextSize);
+        this.#center = CenteredTextData.centerTextHeight(ctx, this.text, h, C.popupButtonTextSize);
     }
     /**
      * Render the popup button at its current position.
@@ -548,13 +534,13 @@ export class PopupButton
         this.posY = y;
         this.width = w;
         this.height = h;
-        ctx.fillStyle = this.mouseOver ? popupAccent3 : popupAccent1;
-        ctx.strokeStyle = popupAccent2;
+        ctx.fillStyle = this.mouseOver ? C.popupAccent3 : C.popupAccent1;
+        ctx.strokeStyle = C.popupAccent2;
         ctx.strokeWeight = 3;
         roundedRect(ctx, x, y, w, h, this.#radius, true, true);
         ctx.strokeWeight = 1;
         ctx.fillStyle = "#ffffff";
-        ctx.font = 'bold ' + popupButtonTextSize.toString() + 'px Segoe UI';
+        ctx.font = 'bold ' + C.popupButtonTextSize.toString() + 'px Segoe UI';
         ctx.textAlign = 'center';
         ctx.fillText(this.text, x + w / 2, y + this.#center, w - this.#radius);
     }
@@ -616,12 +602,12 @@ export class PopupTextbox
      */
     updateDims(ctx, w, h)
     {
-        ctx.font = popupTextboxTextSize.toString() + 'px Segoe UI';
+        ctx.font = C.popupTextboxTextSize.toString() + 'px Segoe UI';
         ctx.textAlign = 'left';
-        this.#center = CenteredTextData.centerTextHeight(ctx, this.text, h, popupTextboxTextSize);
+        this.#center = CenteredTextData.centerTextHeight(ctx, this.text, h, C.popupTextboxTextSize);
         var txtHeight = ctx.measureText("W");
         this.#btm = txtHeight.actualBoundingBoxDescent ? txtHeight.actualBoundingBoxDescent : 0;
-        this.#top = txtHeight.actualBoundingBoxAscent ? txtHeight.actualBoundingBoxAscent : popupTextboxTextSize;
+        this.#top = txtHeight.actualBoundingBoxAscent ? txtHeight.actualBoundingBoxAscent : C.popupTextboxTextSize;
     }
     /**
      * Render the popup textbox at its current position.
@@ -637,7 +623,7 @@ export class PopupTextbox
         this.posY = y;
         this.width = w;
         this.height = h;
-        ctx.fillStyle = this.isFocused ? popupAccent1 : popupAccent2;
+        ctx.fillStyle = this.isFocused ? C.popupAccent1 : C.popupAccent2;
         ctx.strokeStyle = "#000000";
         ctx.strokeWeight = 3;
         ctx.fillRect(x, y, w, h);
@@ -646,22 +632,22 @@ export class PopupTextbox
         if (this.text.length == 0)
         {
             ctx.fillStyle = "#afafaf";
-            ctx.font = popupTextboxTextSize.toString() + 'px Segoe UI';
+            ctx.font = C.popupTextboxTextSize.toString() + 'px Segoe UI';
             ctx.textAlign = 'left';
             ctx.fillText(this.placeholderText, x + this.owner.margin / 2, y + this.#center, w - this.owner.margin * 2);
         }
         else
         {
             ctx.fillStyle = "#ffffff";
-            ctx.font = popupTextboxTextSize.toString() + 'px Segoe UI';
+            ctx.font = C.popupTextboxTextSize.toString() + 'px Segoe UI';
             ctx.textAlign = 'left';
             ctx.fillText(this.text, x + this.owner.margin / 2, y + this.#center, w - this.owner.margin * 2);   
         }
         if (this.isFocused)
         {
             this.#blinkProgress += Program.deltaTime;
-            if (this.#blinkProgress > blinkTime || isNaN(this.#blinkProgress)) this.#blinkProgress = 0;
-            if (this.#blinkProgress > blinkTime / 2)
+            if (this.#blinkProgress > C.blinkTime || isNaN(this.#blinkProgress)) this.#blinkProgress = 0;
+            if (this.#blinkProgress > C.blinkTime / 2)
             {
                 var txtWidth = ctx.measureText(this.text.substring(0, this.cursorPosition));
                 ctx.beginPath();
@@ -866,12 +852,12 @@ export class DualSelectWidget extends PopupWidget
      */
     constructor(leftText, rightText)
     {
+        super();
         this.leftText = leftText;
         this.rightText = rightText;
         this.#radius = 4;
         this.#leftButtonRadius = new Radius(this.#radius, 0, this.#radius, 0);
         this.#rightButtonRadius = new Radius(0, this.#radius, 0, this.#radius);
-        super();
     }
     /**
      * Reset to default position
@@ -890,8 +876,8 @@ export class DualSelectWidget extends PopupWidget
     updateDims(ctx, w, h)
     {
         super.updateDims(ctx, w, h);
-        this.#ltm = new TextMeasurement(ctx, this.leftText, popupButtonTextSize);
-        this.#rtm = new TextMeasurement(ctx, this.rightText, popupButtonTextSize);
+        this.#ltm = new TextMeasurement(ctx, this.leftText, C.popupButtonTextSize);
+        this.#rtm = new TextMeasurement(ctx, this.rightText, C.popupButtonTextSize);
     }
     /**
      * Render the popup widget at its current position.
@@ -904,13 +890,13 @@ export class DualSelectWidget extends PopupWidget
      renderAt (ctx, x, y, w, h)
      {
         super.renderAt(ctx, x, y, w, h);
-        ctx.fillStyle = this.selected == 1 ? popupAccent3 : (this.hovered == 1 ? popupAccent4 : popupAccent2);
-        ctx.strokeStyle = popupBackground;
+        ctx.fillStyle = this.selected == 1 ? C.popupAccent3 : (this.hovered == 1 ? C.popupAccent4 : C.popupAccent2);
+        ctx.strokeStyle = C.popupBackground;
         roundedRect(ctx, x, y, this.width / 2, this.height, this.#leftButtonRadius, true, true);
-        ctx.fillStyle = this.selected == 2 ? popupAccent3 : (this.hovered == 2 ? popupAccent4 : popupAccent2);
+        ctx.fillStyle = this.selected == 2 ? C.popupAccent3 : (this.hovered == 2 ? C.popupAccent4 : C.popupAccent2);
         roundedRect(ctx, x + this.width / 2, y, this.width / 2, this.height, this.#rightButtonRadius, true, true);
         ctx.fillStyle = "#ffffff";
-        ctx.font = 'bold ' + popupButtonTextSize.toString() + 'px Segoe UI';
+        ctx.font = 'bold ' + C.popupButtonTextSize.toString() + 'px Segoe UI';
         ctx.textAlign = 'center';
         ctx.fillText(this.leftText, x + this.width / 4, y + this.height / 2 + this.#ltm.height / 2, this.width / 2);
         ctx.fillText(this.rightText, x + this.width * 3 / 4, y + this.height / 2 + this.#rtm.height / 2, this.width / 2);

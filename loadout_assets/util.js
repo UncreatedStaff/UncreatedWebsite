@@ -226,3 +226,56 @@ export class TextMeasurement
         return ms.width;
     }
 }
+
+export class NotImplementedException extends Error
+{
+    /**
+     * @callback AbstractMethod
+     */
+
+    /**
+     * @param {AbstractMethod} method 
+     */
+    constructor(method, caller)
+    {
+        this.name = "NotImplementedException";
+        this.message = "Abstract method, \"" + method.name + "\" in \"" + caller.constructor.name + "\" not implemented by extending class.";
+    }
+}
+export function onImageLoad()
+{
+    if (Program.pages == null)
+    {
+        console.warn("Images are loading too quickly, must be loaded after pages is defined in program.");
+        return;
+    }
+    for (let [key, value] of Program.pages.iconCache)
+    {
+        if (value.onload == onImageLoad)
+        {
+            value.onload = null;
+        }
+    }
+    Program.invalidateNext(0.2);
+    Program.tick();
+}
+
+/**
+ * Fit an inner rectangle into an outer one.
+ * @param {number} outerX 
+ * @param {number} outerY 
+ * @param {number} innerX 
+ * @param {number} innerY 
+ * @returns {number} Decimal coefficient to multiply inner x and y by to fit into outer x and y.
+ */
+export function getScale(outerX, outerY, innerX, innerY)
+{
+    if (innerX > innerY)
+    {
+        return Math.max(outerX, outerY) / innerX;
+    }
+    else
+    {
+        return Math.min(outerX, outerY) / innerY;
+    }
+}

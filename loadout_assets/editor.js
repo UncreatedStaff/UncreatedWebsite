@@ -1,4 +1,8 @@
-﻿/*jshint esversion: 6 */
+﻿import * as C from "./const.js";
+import { Popup, PopupButton, PopupTextbox, DualSelectWidget, PopupWidget } from "./popup.js";
+import { Radius, WrappedLine, CenteredTextData, roundedRect, roundedRectPath, TextMeasurement, onImageLoad, getScale } from "./util.js";
+
+/*jshint esversion: 6 */
 const PAGES = Object.freeze({
     PRIMARY: 0,
     SECONDARY: 1,
@@ -20,12 +24,32 @@ const PAGES = Object.freeze({
 // order to sort pages when calling Pages.sortPages();
 const PAGEORDER = [PAGES.HANDS, PAGES.BACKPACK, PAGES.VEST, PAGES.SHIRT, PAGES.PANTS, PAGES.PRIMARY, PAGES.SECONDARY,
 PAGES.C_BACKPACK, PAGES.C_VEST, PAGES.C_SHIRT, PAGES.C_PANTS, PAGES.C_HAT, PAGES.C_MASK, PAGES.C_GLASSES];
-const tileSize = 32;
+const blacklistedItems = [1522];
 document.body.onload = startEditor;
 function startEditor()
 {
     Program.start();
 }
+/**
+ * @typedef {Object} StartupData
+ * @property {ItemData[]} items
+ */
+/**
+ * @typedef {Object} ItemData
+ * @property {number} ItemID
+ * @property {number} T Type
+ * @property {string} ItemGUID
+ * @property {string} Name
+ * @property {string} LocalizedName
+ * @property {string} LocalizedDescription
+ * @property {number} SizeX
+ * @property {number} SizeY
+ * @property {number} ItemType EItemType
+ * @property {number} Rarity EItemRarity
+ * @property {number} SlotType ESlotType
+ * @property {number} Amount Max ammo count
+ * @property {boolean} SentryAggressive Will sentries shoot holder
+ */
 export const Program = {
     /** @type {HTMLCanvasElement} **/
     canvas: null,
@@ -45,6 +69,8 @@ export const Program = {
     dictionary: null,
     /** @type {StartupData} **/
     DATA: null,
+    /** @type {boolean} **/
+    isLoading: false,
     start: function () 
     {
         document.onkeydown = keyPress;
@@ -82,16 +108,16 @@ export const Program = {
         attachmentButton = new ContextButton("Edit Attachments", editAttachments);
         deleteButton = new ContextButton("Dispose", disposeItem);
         this.pages = new Pages(25, 25);
-        this.pages.addSlot(PAGES.PRIMARY, "Primary", tileSize * 6, tileSize * 4, true, "primary.svg", (item) => item.item.SlotType == 1 || item.item.SlotType == 2 || item.item.SlotType == 4);
-        this.pages.addSlot(PAGES.SECONDARY, "Secondary", tileSize * 6, tileSize * 4, true, "secondary.svg", (item) => item.item.SlotType == 2 || item.item.SlotType == 4);
-        this.pages.addSlot(PAGES.C_HAT, "Hat", tileSize * 4, tileSize * 4, true, "hat.svg", (item) => item.item.T == 50);
-        this.pages.addSlot(PAGES.C_GLASSES, "Glasses", tileSize * 4, tileSize * 4, true, "glasses.svg", (item) => item.item.T == 49);
-        this.pages.addSlot(PAGES.C_MASK, "Mask", tileSize * 4, tileSize * 4, true, "mask.svg", (item) => item.item.T == 51);
-        this.pages.addSlot(PAGES.C_SHIRT, "Shirt", tileSize * 4, tileSize * 4, true, "shirt.svg", (item) => item.item.T == 47);
-        this.pages.addSlot(PAGES.C_VEST, "Vest", tileSize * 4, tileSize * 4, true, "vest.svg", (item) => item.item.T == 48);
-        this.pages.addSlot(PAGES.C_BACKPACK, "Backpack", tileSize * 4, tileSize * 4, true, "backpack.svg", (item) => item.item.T == 45);
-        this.pages.addSlot(PAGES.C_PANTS, "Pants", tileSize * 4, tileSize * 4, true, "pants.svg", (item) => item.item.T == 46);
-        this.pages.addPage(PAGES.HANDS, 5, 3, "Hands", tileSize, true);
+        this.pages.addSlot(PAGES.PRIMARY, "Primary", C.tileSize * 6, C.tileSize * 4, true, "primary.svg", (item) => item.item.SlotType == 1 || item.item.SlotType == 2 || item.item.SlotType == 4);
+        this.pages.addSlot(PAGES.SECONDARY, "Secondary", C.tileSize * 6, C.tileSize * 4, true, "secondary.svg", (item) => item.item.SlotType == 2 || item.item.SlotType == 4);
+        this.pages.addSlot(PAGES.C_HAT, "Hat", C.tileSize * 4, C.tileSize * 4, true, "hat.svg", (item) => item.item.T == 50);
+        this.pages.addSlot(PAGES.C_GLASSES, "Glasses", C.tileSize * 4, C.tileSize * 4, true, "glasses.svg", (item) => item.item.T == 49);
+        this.pages.addSlot(PAGES.C_MASK, "Mask", C.tileSize * 4, C.tileSize * 4, true, "mask.svg", (item) => item.item.T == 51);
+        this.pages.addSlot(PAGES.C_SHIRT, "Shirt", C.tileSize * 4, C.tileSize * 4, true, "shirt.svg", (item) => item.item.T == 47);
+        this.pages.addSlot(PAGES.C_VEST, "Vest", C.tileSize * 4, C.tileSize * 4, true, "vest.svg", (item) => item.item.T == 48);
+        this.pages.addSlot(PAGES.C_BACKPACK, "Backpack", C.tileSize * 4, C.tileSize * 4, true, "backpack.svg", (item) => item.item.T == 45);
+        this.pages.addSlot(PAGES.C_PANTS, "Pants", C.tileSize * 4, C.tileSize * 4, true, "pants.svg", (item) => item.item.T == 46);
+        this.pages.addPage(PAGES.HANDS, 5, 3, "Hands", C.tileSize, true);
         this.pages.sortPages();
         this.dictionary = new Dictionary();
         this.wiki = new Wiki();
@@ -357,12 +383,12 @@ function tick(ctx, deltaTime, realtime, ticks, canvas)
         ctx.fillStyle = "#ffffff";
         ctx.font = 'bold 28px Segoe UI';
         ctx.textAlign = 'center';
-        var center = centerText(ctx, "Loading...", canvas.clientWidth, canvas.clientHeight, 28);
+        var center = CenteredTextData.centerText(ctx, "Loading...", canvas.clientWidth, canvas.clientHeight, 28);
         ctx.fillText("Loading...", center.width, center.height, canvas.clientWidth);
     }
     Program.pages.render(ctx);
     var loop = false;
-    if (!this.isLoading)
+    if (!Program.isLoading)
     {
         if (Program.popup)
             loop |= Program.popup.render(ctx, deltaTime, realtime);
@@ -392,17 +418,6 @@ function contextOverride(event)
 {
     Program.onContextMenu(event);
 }
-const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-const radius = 2;
-const margin = 0;
-const titleRadius = 16;
-const titleSize = 40;
-const titleToGridDistance = 20;
-const heightMarginBetweenPages = 20;
-const widthMarginBetweenPages = 10;
-const defaultCellColor = "#0f0f0f";
-const hoveredCellColor = "#1f1f5f";
-const occupiedCellColor = "#0b0b0b";
 var attachmentButton = null;
 var deleteButton = null;
 function Pages(posX = 0, posY = 0)
@@ -443,12 +458,12 @@ function Pages(posX = 0, posY = 0)
                 row = 1;
                 for (var j = i; j < this.pages.length; j++)
                 {
-                    this.pages[j].page.changeTransform(null, this.posX + widthOffset + maxWidth + (column == 1 ? widthMarginBetweenPages : 0), tHeight, null, null);
+                    this.pages[j].page.changeTransform(null, this.posX + widthOffset + maxWidth + (column == 1 ? C.widthMarginBetweenPages : 0), tHeight, null, null);
                     this.pages[j].row = j;
                     this.pages[j].column = column;
                     tHeight = this.pages[j].page.nextY();
                 }
-                widthOffset += maxWidth + widthMarginBetweenPages + (column == 1 ? widthMarginBetweenPages : 0);
+                widthOffset += maxWidth + C.widthMarginBetweenPages + (column == 1 ? C.widthMarginBetweenPages : 0);
                 maxWidth = width;
             }
             else
@@ -536,10 +551,10 @@ function Pages(posX = 0, posY = 0)
                 }
                 if (cell)
                 {
-                    cell.color = hoveredCellColor;
+                    cell.color = C.hoveredCellColor;
                     if (this.hoveredCell != null && this.hoveredCell != cell)
                     {
-                        this.hoveredCell.color = defaultCellColor;
+                        this.hoveredCell.color = C.defaultCellColor;
                     }
                     this.hoveredCell = cell;
                     Program.moveConsumed = true;
@@ -550,7 +565,7 @@ function Pages(posX = 0, posY = 0)
         }
         if (this.hoveredCell != null)
         {
-            this.hoveredCell.color = defaultCellColor;
+            this.hoveredCell.color = C.defaultCellColor;
             this.hoveredCell = null;
             Program.moveConsumed = true;
             Program.invalidate();
@@ -926,7 +941,6 @@ function Pages(posX = 0, posY = 0)
             {
                 if (remaining[p].page.pageID === pageID)
                 {
-                    var page = remaining[p].page;
                     var newIndex = this.pages.length;
                     this.pages.push(remaining[p]);
                     for (var x = 0; x < this.pages[newIndex].page.cells.length; x++)
@@ -1032,6 +1046,7 @@ function SlotPage(page = 0, pageID = 0, posX = 0, posY = 0, title = "PAGE", tile
     this.sizeY = 1;
     this.title = title;
     this.items = [];
+    this.radius = new Radius(C.titleRadius);
     this.backgroundIconSrc = background;
     this.pageChild = null;
     this.gridSizeY = function ()
@@ -1048,15 +1063,15 @@ function SlotPage(page = 0, pageID = 0, posX = 0, posY = 0, title = "PAGE", tile
     }
     this.titlePosX = this.posX;
     this.titleSizeX = this.tileSizeX;
-    this.titleSizeY = titleSize;
-    this.gridStartY = this.posY + this.titleSizeY + titleToGridDistance;
+    this.titleSizeY = C.titleSize;
+    this.gridStartY = this.posY + this.titleSizeY + C.titleToGridDistance;
     this.totalHeight = function ()
     {
-        return this.titleSizeY + titleToGridDistance + this.tileSizeY + heightMarginBetweenPages;
+        return this.titleSizeY + C.titleToGridDistance + this.tileSizeY + C.heightMarginBetweenPages;
     }
     this.nextY = function ()
     {
-        return this.gridStartY + this.tileSizeY + heightMarginBetweenPages;
+        return this.gridStartY + this.tileSizeY + C.heightMarginBetweenPages;
     }
     this.nextX = function ()
     {
@@ -1067,7 +1082,7 @@ function SlotPage(page = 0, pageID = 0, posX = 0, posY = 0, title = "PAGE", tile
     {
         ctx.globalAlpha = 0.5;
         ctx.fillStyle = "#0f0f0f";
-        roundedRect(ctx, this.titlePosX, this.posY, this.titleSizeX, this.titleSizeY, titleRadius, true, false);
+        roundedRect(ctx, this.titlePosX, this.posY, this.titleSizeX, this.titleSizeY, this.radius, true, false);
         ctx.globalAlpha = 1.0;
         ctx.textAlign = 'center';
         ctx.fillStyle = '#ffffff';
@@ -1120,7 +1135,6 @@ function SlotPage(page = 0, pageID = 0, posX = 0, posY = 0, title = "PAGE", tile
             console.warn(`Tried to add and item to an invalid spot.`);
             return false;
         }
-        this.items.push(item);
     }
     this.removeItem = function ()
     {
@@ -1156,7 +1170,7 @@ function SlotPage(page = 0, pageID = 0, posX = 0, posY = 0, title = "PAGE", tile
         else if (yChange)
         {
             this.posY = posY;
-            this.gridStartY = this.posY + this.titleSizeY + titleToGridDistance;
+            this.gridStartY = this.posY + this.titleSizeY + C.titleToGridDistance;
             this.cells[0][0].posY = this.gridStartY;
         }
         if (tileSizeXChange || tileSizeYChange || xChange || yChange) Program.invalidate();
@@ -1185,39 +1199,39 @@ function Page(page = 0, pageID = 0, posX = 0, posY = 0, sizeX = 4, sizeY = 3, ti
     this.items = [];
     this.gridSizeY = function ()
     {
-        return this.sizeY * (this.tileSize + margin);
+        return this.sizeY * (this.tileSize + C.margin);
     }
     this.gridSizeX = function ()
     {
-        return this.sizeX * (this.tileSize + margin);
+        return this.sizeX * (this.tileSize + C.margin);
     }
     this.getNotation = function (x, y)
     {
-        return this.title + "!" + alphabet[x] + (y + 1).toString();
+        return this.title + "!" + C.alphabet[x] + (y + 1).toString();
     }
     this.titlePosX = this.posX;
     this.titleSizeX = this.gridSizeX();
-    this.titleSizeY = titleSize;
-    this.gridStartY = this.posY + this.titleSizeY + titleToGridDistance;
+    this.titleSizeY = C.titleSize;
+    this.gridStartY = this.posY + this.titleSizeY + C.titleToGridDistance;
     this.totalHeight = function ()
     {
-        return this.titleSizeY + titleToGridDistance + this.sizeY * (this.tileSize + margin) + heightMarginBetweenPages;
+        return this.titleSizeY + C.titleToGridDistance + this.sizeY * (this.tileSize + C.margin) + C.heightMarginBetweenPages;
     }
     this.nextY = function ()
     {
-        return this.gridStartY + this.sizeY * (this.tileSize + margin) + heightMarginBetweenPages;
+        return this.gridStartY + this.sizeY * (this.tileSize + C.margin) + C.heightMarginBetweenPages;
     }
     this.nextX = function ()
     {
-        return this.posX + this.sizeX * (this.tileSize + margin);
+        return this.posX + this.sizeX * (this.tileSize + C.margin);
     }
     for (var x = 0; x < this.sizeX; x++)
     {
         var cells = [];
-        var xpos = this.posX + (x * (this.tileSize + margin));
+        var xpos = this.posX + (x * (this.tileSize + C.margin));
         for (var y = 0; y < this.sizeY; y++)
         {
-            cells.push(new InventoryCell(this.page, xpos, this.gridStartY + (y * (this.tileSize + margin)), this.tileSize, this.getNotation(x, y), x, y));
+            cells.push(new InventoryCell(this.page, xpos, this.gridStartY + (y * (this.tileSize + C.margin)), this.tileSize, this.getNotation(x, y), x, y));
         }
         this.cells.push(cells);
     }
@@ -1225,7 +1239,7 @@ function Page(page = 0, pageID = 0, posX = 0, posY = 0, sizeX = 4, sizeY = 3, ti
     {
         ctx.globalAlpha = 0.5;
         ctx.fillStyle = "#0f0f0f";
-        roundedRect(ctx, this.titlePosX, this.posY, this.titleSizeX, this.titleSizeY, titleRadius, true, false);
+        roundedRect(ctx, this.titlePosX, this.posY, this.titleSizeX, this.titleSizeY, C.titleRadius, true, false);
         ctx.globalAlpha = 1.0;
         ctx.textAlign = 'center';
         ctx.fillStyle = '#ffffff';
@@ -1286,10 +1300,10 @@ function Page(page = 0, pageID = 0, posX = 0, posY = 0, sizeX = 4, sizeY = 3, ti
     {
         for (var i = 0; i < this.items.length; i++)
         {
-            if (this.items[i].page == page && this.items[i].x == x && this.items[i].y == y)
+            if (this.items[i].page == this.page && this.items[i].x == x && this.items[i].y == y)
             {
                 this.items[i].dispose();
-                this.items[i].splice(i, 1);
+                this.items.splice(i, 1);
                 return true;
             }
         }
@@ -1301,25 +1315,25 @@ function Page(page = 0, pageID = 0, posX = 0, posY = 0, sizeX = 4, sizeY = 3, ti
         if (y < this.gridStartY || y > this.gridStartY + this.gridSizeY) return false;
         if (round)
         {
-            var cell = this.cells[Math.round((x - this.posX) / (this.tileSize + margin))];
+            var cell = this.cells[Math.round((x - this.posX) / (this.tileSize + C.margin))];
             if (cell == null)
-                cell = this.cells[Math.floor((x - this.posX) / (this.tileSize + margin))];
+                cell = this.cells[Math.floor((x - this.posX) / (this.tileSize + C.margin))];
             if (cell == null)
-                cell = this.cells[Math.ceil((x - this.posX) / (this.tileSize + margin))];
+                cell = this.cells[Math.ceil((x - this.posX) / (this.tileSize + C.margin))];
             if (cell == null) return false;
-            var cell2 = cell[Math.round((y - this.gridStartY) / (this.tileSize + margin))];
+            var cell2 = cell[Math.round((y - this.gridStartY) / (this.tileSize + C.margin))];
             if (cell2 == null)
-                cell2 = cell[Math.floor((y - this.gridStartY) / (this.tileSize + margin))];
+                cell2 = cell[Math.floor((y - this.gridStartY) / (this.tileSize + C.margin))];
             if (cell2 == null)
-                cell2 = cell[Math.ceil((y - this.gridStartY) / (this.tileSize + margin))];
+                cell2 = cell[Math.ceil((y - this.gridStartY) / (this.tileSize + C.margin))];
             if (cell2 == null) return false;
             return cell2;
         }
         else
         {
-            var cell = this.cells[Math.floor((x - this.posX) / (this.tileSize + margin))];
+            var cell = this.cells[Math.floor((x - this.posX) / (this.tileSize + C.margin))];
             if (cell == null) return false;
-            cell = cell[Math.floor((y - this.gridStartY) / (this.tileSize + margin))];
+            cell = cell[Math.floor((y - this.gridStartY) / (this.tileSize + C.margin))];
             if (cell == null) return false;
             else return cell;
         }
@@ -1341,7 +1355,7 @@ function Page(page = 0, pageID = 0, posX = 0, posY = 0, sizeX = 4, sizeY = 3, ti
         else if (yChange)
         {
             this.posY = posY;
-            this.gridStartY = this.posY + this.titleSizeY + titleToGridDistance;
+            this.gridStartY = this.posY + this.titleSizeY + C.titleToGridDistance;
         }
         var sizeYChange = sizeY != null && sizeY > -1 && (cells.length > 0 && cells[0].length != sizeY);
         var sizeXChange = sizeX != null && sizeX > -1 && cells.length != sizeX;
@@ -1404,7 +1418,7 @@ function Page(page = 0, pageID = 0, posX = 0, posY = 0, sizeX = 4, sizeY = 3, ti
         {
             for (var x = 0; x < this.sizeX; x++)
             {
-                var xpos = this.posX + (x * (this.tileSize + margin));
+                var xpos = this.posX + (x * (this.tileSize + C.margin));
                 for (var y = 0; y < this.sizeY; y++)
                 {
                     this.cells[x][y].posX = xpos;
@@ -1415,7 +1429,7 @@ function Page(page = 0, pageID = 0, posX = 0, posY = 0, sizeX = 4, sizeY = 3, ti
         {
             for (var y = 0; y < this.sizeY; y++)
             {
-                var ypos = this.gridStartY + (y * (this.tileSize + margin));
+                var ypos = this.gridStartY + (y * (this.tileSize + C.margin));
                 for (var x = 0; x < this.sizeX; x++)
                 {
                     this.cells[x][y].posY = ypos;
@@ -1442,8 +1456,8 @@ function InventoryCell(page = 0, posX = 0, posY = 0, tileSize = 128, notation = 
     this.tileSizeY = tileSize;
     this.posX = posX;
     this.posY = posY;
-    this.radius = getRadius(radius);
-    this.color = defaultCellColor;
+    this.radius = new Radius(C.radius);
+    this.color = C.defaultCellColor;
     this.occupied = false;
     this.checkOccupied = function ()
     {
@@ -1462,7 +1476,7 @@ function InventoryCell(page = 0, posX = 0, posY = 0, tileSize = 128, notation = 
     {
         roundedRectPath(ctx, this.posX, this.posY, this.tileSizeX, this.tileSizeY, this.radius);
         ctx.globalAlpha = 0.5;
-        ctx.fillStyle = this.occupied ? occupiedCellColor : this.color;
+        ctx.fillStyle = this.occupied ? C.occupiedCellColor : this.color;
         ctx.fill();
         ctx.globalAlpha = 1.0;
         ctx.strokeStyle = "#000000";
@@ -1478,12 +1492,12 @@ function SlotCell(page = 0, posX = 0, posY = 0, tileSizeX = 128, tileSizeY = 128
     this.notation = "A1";
     this.tileSizeX = tileSizeX;
     this.tileSizeY = tileSizeY;
-    this.backgroundIconSrc = statIconPrefix + background;
+    this.backgroundIconSrc = C.statIconPrefix + background;
     this.background = null;
     this.posX = posX;
     this.posY = posY;
-    this.radius = getRadius(radius);
-    this.color = defaultCellColor;
+    this.radius = new Radius(C.radius);
+    this.color = C.defaultCellColor;
     this.occupied = false;
     this.getIcon = function ()
     {
@@ -1510,7 +1524,7 @@ function SlotCell(page = 0, posX = 0, posY = 0, tileSizeX = 128, tileSizeY = 128
     }
     this.render = function (ctx)
     {
-        if (!this.occupied && this.icon == null && !this.dontRequestImage)
+        if (!this.occupied && this.background == null && !this.dontRequestImage)
         {
             this.getIcon();
         }
@@ -1526,24 +1540,6 @@ function SlotCell(page = 0, posX = 0, posY = 0, tileSizeX = 128, tileSizeY = 128
         ctx.globalAlpha = 1.0;
         ctx.strokeStyle = "#000000";
         ctx.stroke();
-    }
-}
-const statIconPrefix = "../assets/icons/";
-const itemIconPrefix = "../loadout_assets/Items/";
-const previewColor = "#ffffff";
-const previewColorBad = "#ffaaaa";
-const pickedColor = "#f0a0a0";
-const placedColor = "#000000";
-const roundPlacement = true;
-function getScale(outerX, outerY, innerX, innerY)
-{
-    if (innerX > innerY)
-    {
-        return Math.max(outerX, outerY) / innerX;
-    }
-    else
-    {
-        return Math.min(outerX, outerY) / innerY;
     }
 }
 function Item(id = 0, x = 0, y = 0, sizeX = 1, sizeY = 1, rotation = 0, name = "#NAME", description = "#DESC", page = 0, itemData = null, orphan = false)
@@ -1562,7 +1558,7 @@ function Item(id = 0, x = 0, y = 0, sizeX = 1, sizeY = 1, rotation = 0, name = "
     this.rotation = rotation;
     this.pendingRotation = rotation;
     this.name = name;
-    this.radius = getRadius(radius);
+    this.radius = new Radius(C.radius);
     this.description = description;
     this.tileSizeX = 0;
     this.tileSizeY = 0;
@@ -1792,7 +1788,6 @@ function Item(id = 0, x = 0, y = 0, sizeX = 1, sizeY = 1, rotation = 0, name = "
                 ctx.rotate(rotation);
                 if (opacity != 1)
                     ctx.globalAlpha = opacity;
-                // fix
                 try
                 {
                     ctx.drawImage(this.icon, dx, dy, width, height);
@@ -1921,14 +1916,14 @@ function Item(id = 0, x = 0, y = 0, sizeX = 1, sizeY = 1, rotation = 0, name = "
                     {
                         this.pickedOffsetX = (x - cell.posX) / (this.sizeX * ratio);
                         if (this.pickedOffsetX > 1) this.pickedOffsetX = 1;
-                        this.pickedOffsetX *= tileSize * this.sizeX * -1;
+                        this.pickedOffsetX *= C.tileSize * this.sizeX * -1;
                     }
                     if (y == cell.posY) this.pickedOffsetY = 0;
                     else
                     {
                         this.pickedOffsetY = (y - cell.posY) / (this.sizeY * ratio);
                         if (this.pickedOffsetY > 1) this.pickedOffsetY = 1;
-                        this.pickedOffsetY *= tileSize * this.sizeY * -1;
+                        this.pickedOffsetY *= C.tileSize * this.sizeY * -1;
                     }
                 }
                 else
@@ -1972,61 +1967,10 @@ function Item(id = 0, x = 0, y = 0, sizeX = 1, sizeY = 1, rotation = 0, name = "
         else return false;
     }
 }
-function onImageLoad()
-{
-    if (Program.pages == null)
-    {
-        console.warn("Images are loading too quickly, must be loaded after pages is defined in program.");
-        return;
-    }
-    for (let [key, value] of Program.pages.iconCache)
-    {
-        if (value.onload == onImageLoad)
-        {
-            value.onload = null;
-        }
-    }
-    Program.invalidateNext(0.2);
-    Program.tick();
-}
-function roundedRectPath(ctx, x = 0, y = 0, width = 128, height = 128, radius = { tl: 4, tr: 4, br: 4, bl: 4 })
-{
-    ctx.beginPath();
-    ctx.moveTo(x + radius.tl, y);
-    ctx.lineTo(x + width - radius.tr, y);
-    ctx.quadraticCurveTo(x + width, y, x + width, y + radius.tr);
-    ctx.lineTo(x + width, y + height - radius.br);
-    ctx.quadraticCurveTo(x + width, y + height, x + width - radius.br, y + height);
-    ctx.lineTo(x + radius.bl, y + height);
-    ctx.quadraticCurveTo(x, y + height, x, y + height - radius.bl);
-    ctx.lineTo(x, y + radius.tl);
-    ctx.quadraticCurveTo(x, y, x + radius.tl, y);
-    ctx.closePath();
-}
-function getRadius(radius = 4)
-{
-    if (!radius) radius = { tl: 4, tr: 4, bl: 4, br: 4 };
-    else if (typeof radius === 'number') radius = { tl: radius, tr: radius, bl: radius, br: radius };
-    return radius;
-}
-function getRadius2(tl = 4, tr = 4, bl = 4, br = 4)
-{
-    return { tl: tl, tr: tr, bl: bl, br: br };
-}
-function roundedRect(ctx, x = 0, y = 0, width = 128, height = 128, radius, fill = false, stroke = true)
-{
-    if (!(stroke || fill)) return;
-    radius = getRadius(radius);
-    roundedRectPath(ctx, x, y, width, height, radius);
-    if (fill)
-        ctx.fill();
-    if (stroke)
-        ctx.stroke();
-}
 function roundedArrow(ctx, x = 0, y = 0, width = 128, height = 128, radius, fill = false, stroke = true, left = true)
 {
     if (!(stroke || fill)) return;
-    radius = getRadius(radius);
+    radius = new Radius(radius);
     if (left)
     {
         ctx.beginPath();
@@ -2057,766 +2001,6 @@ function roundedArrow(ctx, x = 0, y = 0, width = 128, height = 128, radius, fill
     if (stroke)
         ctx.stroke();
 }
-function PopupButton(text = null, keyShortcut = 0, onPress = function (btn) { })
-{
-    this.text = text;
-    this.onClick = onPress;
-    this.shortcut = keyShortcut;
-    this.owner = null;
-    this.mouseOver = false;
-    this.radius = 4;
-    this.posX = 0;
-    this.posY = 0;
-    this.width = 0;
-    this.height = 0;
-    this.mouseInside = function (x, y)
-    {
-        return x > this.posX && x < this.posX + this.width && y > this.posY && y < this.posY + this.height;
-    }
-    this.updateDims = function (ctx, w, h)
-    {
-        ctx.font = 'bold ' + popupButtonTextSize.toString() + 'px Segoe UI';
-        ctx.textAlign = 'center';
-        this.center = centerText(ctx, this.text, w, h).height;
-    }
-    this.renderAt = function (ctx, x = 0, y = 0, w = 0, h = 0)
-    {
-        this.posX = x;
-        this.posY = y;
-        this.width = w;
-        this.height = h;
-        ctx.fillStyle = this.mouseOver ? popupAccent3 : popupAccent1;
-        ctx.strokeStyle = popupAccent2;
-        ctx.strokeWeight = 3;
-        roundedRect(ctx, x, y, w, h, this.radius, true, true);
-        ctx.strokeWeight = 1;
-        ctx.fillStyle = "#ffffff";
-        ctx.font = 'bold ' + popupButtonTextSize.toString() + 'px Segoe UI';
-        ctx.textAlign = 'center';
-        ctx.fillText(this.text, x + w / 2, y + this.center, w - this.radius);
-    }
-}
-function DualSelectWidget(leftText, rightText)
-{
-    this.owner = null;
-    this.type = 2;
-    this.radius = 4;
-    this.leftButtonRadius = getRadius2(this.radius, 0, this.radius, 0);
-    this.rightButtonRadius = getRadius2(0, this.radius, 0, this.radius);
-    this.width = 0;
-    this.defaultHeight = 60;
-    this.height = 0;
-    this.posX = 0;
-    this.consumeKeys = false;
-    this.posY = 0;
-    this.selected = 0;
-    this.leftText = leftText;
-    this.rightText = rightText;
-    this.hovered = 0;
-    this.mouseMoved = function (x, y)
-    {
-        if (x < this.width / 2)
-            this.hovered = 1;
-        else
-            this.hovered = 2;
-        Program.invalidate();
-    }
-    this.reset = function ()
-    {
-        this.selected = 0;
-        this.hovered = 0;
-    }
-    this.updateDims = function (ctx, w, h)
-    {
-        this.width = w;
-        this.height = h;
-    }
-    this.renderAt = function (ctx, x = 0, y = 0, w = 0, h = 0)
-    {
-        this.width = w;
-        this.height = h;
-        this.posX = x;
-        this.posY = y;
-        ctx.fillStyle = this.selected == 1 ? popupAccent3 : (this.hovered == 1 ? popupAccent4 : popupAccent2);
-        ctx.strokeStyle = popupBackground;
-        roundedRect(ctx, x, y, this.width / 2, this.height, this.leftButtonRadius, true, true);
-        ctx.fillStyle = this.selected == 2 ? popupAccent3 : (this.hovered == 2 ? popupAccent4 : popupAccent2);
-        roundedRect(ctx, x + this.width / 2, y, this.width / 2, this.height, this.rightButtonRadius, true, true);
-        ctx.fillStyle = "#ffffff";
-        ctx.font = 'bold ' + popupButtonTextSize.toString() + 'px Segoe UI';
-        ctx.textAlign = 'center';
-        var ltm = m(ctx, this.leftText, popupButtonTextSize);
-        var rtm = m(ctx, this.rightText, popupButtonTextSize);
-        ctx.fillText(this.leftText, x + this.width / 4, y + this.height / 2 + ltm.height / 2, this.width / 2)
-        ctx.fillText(this.rightText, x + this.width * 3 / 4, y + this.height / 2 + rtm.height / 2, this.width / 2)
-    }
-    this.onClick = function (x, y)  
-    {
-        if (x < this.width / 2)
-            this.selected = this.selected == 1 ? 0 : 1;
-        else
-            this.selected = this.selected == 2 ? 0 : 2;
-    }
-}
-const blinkTime = 1.5;
-function PopupTextbox(placeholderText = "...", limitMode = 0, defaultText = "")
-{
-    this.isFocused = false;
-    this.placeholderText = placeholderText;
-    this.limitMode = limitMode;
-    this.defaultText = defaultText;
-    this.cursorPosition = 0;
-    this.cursorTime = 0;
-    this.text = "";
-    this.posX = 0;
-    this.posY = 0;
-    this.width = 0;
-    this.height = 0;
-    this.blinkProgress = 0;
-    this.mouseInside = function (x, y)
-    {
-        return x > this.posX && x < this.posX + this.width && y > this.posY && y < this.posY + this.height;
-    }
-    this.clear = function ()
-    {
-        this.text = "";
-        this.cursorPosition = 0;
-    }
-    this.updateDims = function (ctx, w, h)
-    {
-        ctx.font = popupTextboxTextSize.toString() + 'px Segoe UI';
-        ctx.textAlign = 'left';
-        this.center = centerText(ctx, this.text, w, h).height;
-        var txtHeight = ctx.measureText("W");
-        this.btm = txtHeight.actualBoundingBoxDescent ? txtHeight.actualBoundingBoxDescent : 0;
-        this.top = txtHeight.actualBoundingBoxAscent ? txtHeight.actualBoundingBoxAscent : 10;
-    }
-    this.owner = null;
-    this.renderAt = function (ctx, x = 0, y = 0, w = 0, h = 0)
-    {
-        this.posX = x;
-        this.posY = y;
-        this.width = w;
-        this.height = h;
-        ctx.fillStyle = this.isFocused ? popupAccent1 : popupAccent2;
-        ctx.strokeStyle = "#000000";
-        ctx.strokeWeight = 3;
-        ctx.fillRect(x, y, w, h);
-        ctx.strokeRect(x, y, w, h);
-        ctx.strokeWeight = 1;
-        if (this.text.length == 0)
-        {
-            ctx.fillStyle = "#afafaf";
-            ctx.font = popupTextboxTextSize.toString() + 'px Segoe UI';
-            ctx.textAlign = 'left';
-            ctx.fillText(this.placeholderText, x + this.owner.margin / 2, y + this.center, w - this.owner.margin * 2);
-        }
-        else
-        {
-            ctx.fillStyle = "#ffffff";
-            ctx.font = popupTextboxTextSize.toString() + 'px Segoe UI';
-            ctx.textAlign = 'left';
-            ctx.fillText(this.text, x + this.owner.margin / 2, y + this.center, w - this.owner.margin * 2);
-            if (this.isFocused)
-            {
-                this.blinkProgress += Program.deltaTime;
-                if (this.blinkProgress > blinkTime || isNaN(this.blinkProgress)) this.blinkProgress = 0;
-                if (this.blinkProgress > blinkTime / 2)
-                {
-                    var txtWidth = ctx.measureText(this.text.substring(0, this.cursorPosition));
-                    ctx.beginPath();
-                    ctx.moveTo(x + this.owner.margin / 2 + txtWidth.width + 1, y + this.center - this.top - 1);
-                    ctx.lineTo(x + this.owner.margin / 2 + txtWidth.width + 1, y + this.center + this.btm + 1);
-                    ctx.strokeStyle = "#ffffff";
-                    ctx.strokeWeight = 2;
-                    ctx.stroke();
-                    ctx.strokeWeight = 1;
-                }
-            }
-        }
-    }
-    this.keyPress = function (event)
-    {
-        if (event.keyCode === 8) //bksp
-        {
-            if (event.ctrlKey)
-            {
-                if (this.cursorPosition === this.text.length)
-                {
-                    var i
-                    for (i = this.text.length - 1; i >= 0; i--)
-                        if (this.text[i] == " ") break;
-                    if (i > 0)
-                        this.text = this.text.substring(0, i);
-                    else
-                        this.text = "";
-                    this.cursorPosition = i < 0 ? 0 : i;
-                }
-                else
-                {
-                    var i
-                    for (i = this.cursorPosition - 1; i >= 0; i--)
-                        if (this.text[i] == " ") break;
-                    if (i > 0)
-                        this.text = this.text.substring(0, i) + this.text.substring(this.cursorPosition, this.text.length);
-                    else
-                        this.text = this.text.substring(this.cursorPosition, this.text.length);
-                    this.cursorPosition = i < 0 ? 0 : i;
-                }
-            }
-            else
-            {
-                if (this.cursorPosition === this.text.length)
-                {
-                    this.text = this.text.substring(0, this.text.length - 1);
-                }
-                else
-                {
-                    this.text = this.text.substring(0, this.cursorPosition - 1) + this.text.substring(this.cursorPosition, this.text.length);
-                }
-                if (this.cursorPosition > 0)
-                    this.cursorPosition--;
-            }
-        }
-        else if (event.keyCode === 65 && event.ctrlKey)
-        {
-            if (event.preventDefault)
-                event.preventDefault();
-            if (event.stopPropagation)
-                event.stopPropagation();
-        }/*
-        else if (event.keyCode === 86 && event.ctrlKey)
-        {
-            console.log(navigator.clipboard);
-            if (this.limitMode === 1)
-            {
-                for (var c = 0; c < text.length; c++)
-                {
-                    if (!isNaN(parseInt(text[c])))
-                    {
-                        text.splice(c, 1);
-                        c--;
-                    }
-                }
-            }
-            if (this.cursorPosition === this.text.length || this.text.length == 0)
-                this.text += text;
-            else if (this.cursorPosition === 0)
-                this.text = event.key + this.text;
-            else
-                this.text = this.text.substring(0, this.cursorPosition) + event.key + this.text.substring(this.cursorPosition, this.text.length);
-            Program.invalidate();
-            if (event.preventDefault)
-                event.preventDefault();
-            if (event.stopPropagation)
-                event.stopPropagation();
-        }*/
-        // a-z, _, ' ', 0-9
-        else if ((this.limitMode == 1 && event.keyCode >= 48 && event.keyCode <= 57) || (this.limitMode != 1 && ((event.keyCode >= 65 && event.keyCode <= 90) || event.keyCode === 173 || event.keyCode === 32 || (event.keyCode >= 48 && event.keyCode <= 57) || event.keyCode == 190 || event.keyCode == 188)))
-        {
-            if (this.cursorPosition === this.text.length || this.text.length == 0)
-                this.text += event.key;
-            else if (this.cursorPosition === 0)
-                this.text = event.key + this.text;
-            else
-                this.text = this.text.substring(0, this.cursorPosition) + event.key + this.text.substring(this.cursorPosition, this.text.length);
-            this.cursorPosition++;
-        } else if (event.keyCode === 37) // <-
-        {
-            if (this.cursorPosition > 0)
-                this.cursorPosition--;
-        }
-        else if (event.keyCode === 39) // ->
-        {
-            if (this.cursorPosition < this.text.length)
-                this.cursorPosition++;
-        }
-    }
-}
-const popupAnimTimeSec = 0.3;
-const popupBkgrTransparency = 0.375;
-const popupHeaderHeight = 40;
-const popupTextboxHeight = 65;
-const popupButtonHeight = 80;
-const popupDescLineSpacing = 4;
-const popupDescTextSize = 16;
-const popupTitleTextSize = 20;
-const popupButtonTextSize = 16;
-const popupTextboxTextSize = 16;
-const popupAccent1 = "#9264cd";
-const popupAccent2 = "#532c87";
-const popupAccent3 = "#bb9fe0";
-const popupAccent4 = "#d6c5ec";
-const popupBackground = "#0d0d0d";
-const expConst = 2.1899243665;
-function Popup(title = "TITLE", message = "", buttons = [new PopupButton("OK", 13), new PopupButton("ESC", 27)], textboxes = [], widgets = [], darkenBackground = true)
-{
-    this.title = title;
-    this.message = message;
-    this.wrappedMessage = null;
-    this.margin = 16;
-    this.buttons = buttons;
-    for (var i = 0; i < this.buttons.length; i++)
-    {
-        this.buttons[i].owner = this;
-    }
-    this.textboxes = textboxes;
-    for (var i = 0; i < this.textboxes.length; i++)
-    {
-        this.textboxes[i].owner = this;
-    }
-    this.widgets = widgets;
-    for (var i = 0; i < this.widgets.length; i++)
-    {
-        this.widgets[i].owner = this;
-    }
-    this.reset = function ()
-    {
-        for (var i = 0; i < this.textboxes.length; i++)
-        {
-            this.textboxes[i].clear();
-            if (i == 0) this.textboxes[0].isFocused = true;
-        }
-        for (var i = 0; i < this.widgets.length; i++)
-        {
-            this.widgets[i].reset();
-        }
-    }
-    this.reset();
-    this.darkenBackground = darkenBackground;
-    this.consumeKeys = false;
-    this.isOpen = false;
-    this.willAnimate = false;
-    this.isAnimating = false;
-    this.radius = getRadius(16);
-    this.headerRadius = getRadius2(16, 16, 0, 0);
-    this.inited = false;
-    this.updateDims = function (ctx)
-    {
-        this.width = Program.canvas.width / 3;
-        this.posX = Program.canvas.width / 2 - this.width / 2;
-        this.startPosY = Program.canvas.height * 1.05;
-        ctx.font = popupDescTextSize.toString() + 'px Segoe UI';
-        ctx.textAlign = 'left';
-        this.wrappedMessage = wrapText(ctx, this.message, this.width - this.margin * 2, popupDescTextSize);
-        this.textHeight = 0;
-        for (var i = 0; i < this.wrappedMessage.length; i++)
-            this.textHeight += this.wrappedMessage[i].height + popupDescLineSpacing;
-        var wh = 0;
-        for (var i = 0; i < this.widgets.length; i++)
-            wh += this.widgets[i].defaultHeight;
-        this.height = popupHeaderHeight + this.margin + this.textHeight + this.margin + (this.margin + popupTextboxHeight) * this.textboxes.length + this.margin + wh + (this.buttons.length == 0 ? 0 : popupButtonHeight + this.margin);
-        this.finalPosY = Program.canvas.height / 2 - this.height / 2;
-        ctx.font = 'bold ' + popupTitleTextSize + 'px Segoe UI';
-        ctx.textAlign = 'left';
-        this.titleYoffset = centerText(ctx, this.title, this.width, popupHeaderHeight, popupTitleTextSize).height;
-        this.buttonWidth = ((this.width - this.margin) / this.buttons.length) - this.margin;
-        for (var i = 0; i < this.buttons.length; i++)
-            this.buttons[i].updateDims(ctx, this.buttonWidth, popupButtonHeight);
-        for (var i = 0; i < this.widgets.length; i++)
-            this.widgets[i].updateDims(ctx, this.width - this.margin * 2, this.widgets[i].defaultHeight);
-        for (var i = 0; i < this.textboxes.length; i++)
-            this.textboxes[i].updateDims(ctx, this.width - this.margin * 2, popupTextboxHeight);
-        this.inited = true;
-    }
-    this.open = function ()
-    {
-        this.reset();
-        this.animState = true;
-        this.willAnimate = true;
-        this.consumeKeys = true;
-        this.inited = false;
-        Program.invalidate();
-    }
-    this.close = function ()
-    {
-        this.animState = false;
-        this.willAnimate = true;
-        Program.invalidate();
-    }
-    this.render = function (ctx, dt, rt)
-    {
-        if (!this.inited)
-            this.updateDims(ctx);
-        if (this.willAnimate)
-        {
-            this.willAnimate = false;
-            this.isAnimating = true;
-            if (this.animState)
-            {
-                this.currentAnimAlpha = 0;
-                this.renderAt(ctx, this.posX, this.startPosY, 0.0);
-            }
-            else
-            {
-                this.currentAnimAlpha = 1.0;
-                this.renderAt(ctx, this.posX, this.finalPosY, 1.0);
-            }
-            return true;
-        }
-        else if (this.isAnimating)
-        {
-            if (this.animState)
-            {
-                if (this.currentAnimAlpha >= 1.0)
-                {
-                    this.currentAnimAlpha = 1;
-                    this.isAnimating = false;
-                    this.isOpen = true;
-                    this.willAnimate = false;
-                    this.renderAt(ctx, this.posX, this.finalPosY, 1.0);
-                    return false;
-                }
-                else
-                {
-                    this.renderAt(ctx, this.posX, this.lerp(), this.currentAnimAlpha);
-                    this.currentAnimAlpha += dt / popupAnimTimeSec;
-                    return true;
-                }
-            }
-            else
-            {
-                if (this.currentAnimAlpha <= 0)
-                {
-                    this.currentAnimAlpha = 0;
-                    this.isAnimating = false;
-                    this.isOpen = false;
-                    this.willAnimate = false;
-                    this.onClose();
-                    return false;
-                }
-                else
-                {
-                    this.renderAt(ctx, this.posX, this.lerp(), this.currentAnimAlpha);
-                    this.currentAnimAlpha -= dt / popupAnimTimeSec;
-                    return true;
-                }
-            }
-        }
-        else if (this.isOpen)
-        {
-            this.renderAt(ctx, this.posX, this.finalPosY, 1.0);
-        }
-        if (!this.isAnimating)
-        {
-            for (var i = 0; i < this.textboxes.length; i++)
-            {
-                if (this.textboxes[i].isFocused) return true;
-            }
-        }
-        return this.isAnimating;
-    }
-    this.exp = function (alpha)
-    {
-        return Math.pow(expConst, Math.pow(expConst, 0.5 * alpha) * alpha - 1) - Math.pow(expConst, -1);
-    }
-    this.lerp = function ()
-    {
-        if (this.animState)
-            return (this.startPosY - this.finalPosY) * (1 - (this.exp(this.currentAnimAlpha))) + this.finalPosY;
-        else
-            return (this.startPosY - this.finalPosY) * (this.exp(1 - this.currentAnimAlpha)) + this.finalPosY;
-    }
-    this.renderAt = function (ctx, x, y, bkgrAlpha)
-    {
-        if (bkgrAlpha > 0)
-        {
-            ctx.globalAlpha = bkgrAlpha * popupBkgrTransparency;
-            ctx.fillStyle = "#000000";
-            ctx.fillRect(0, 0, Program.canvas.width, Program.canvas.height);
-        }
-        ctx.globalAlpha = 1.0;
-        if (y >= Program.canvas.height) return;
-        ctx.fillStyle = popupBackground;
-        ctx.strokeStyle = popupAccent1;
-        roundedRect(ctx, x, y, this.width, this.height, this.radius, true, true);
-        ctx.strokeStyle = "#000000";
-        ctx.fillStyle = popupAccent1;
-        roundedRect(ctx, x, y, this.width, popupHeaderHeight, this.headerRadius, true, false);
-        ctx.fillStyle = "#ffffff";
-        ctx.font = 'bold ' + popupTitleTextSize + 'px Segoe UI';
-        ctx.textAlign = 'left';
-        var ypos = y + popupHeaderHeight;
-        ctx.fillText(this.title, x + this.margin, y + this.titleYoffset, this.width - this.margin * 2);
-        ctx.font = popupDescTextSize.toString() + 'px Segoe UI';
-        ypos += this.margin;
-        for (var i = 0; i < this.wrappedMessage.length; i++)
-        {
-            ypos += this.wrappedMessage[i].height;
-            ctx.fillText(this.wrappedMessage[i].text, x + this.margin, ypos, this.width - this.margin * 2);
-            if (i != this.wrappedMessage.length - 1) ypos += popupDescLineSpacing;
-        }
-        for (var i = 0; i < this.textboxes.length; i++)
-        {
-            ypos += this.margin;
-            this.textboxes[i].renderAt(ctx, x + this.margin, ypos, this.width - this.margin * 2, popupTextboxHeight);
-            ypos += popupTextboxHeight;
-        }
-        for (var i = 0; i < this.widgets.length; i++)
-        {
-            ypos += this.margin;
-            this.widgets[i].renderAt(ctx, x + this.margin, ypos, this.width - this.margin * 2, this.widgets[i].defaultHeight);
-            ypos += this.widgets[i].defaultHeight;
-        }
-        ypos += this.margin;
-        if (this.buttons.length == 0) return;
-        var xpos = x + this.margin;
-        for (var i = 0; i < this.buttons.length; i++)
-        {
-            this.buttons[i].renderAt(ctx, xpos, ypos, this.buttonWidth, popupButtonHeight);
-            xpos += this.margin + this.buttonWidth;
-        }
-    }
-    this.onClose = function ()
-    {
-        Program.popup = null;
-        this.consumeKeys = false;
-    }
-    this.currentAnimAlpha = 0.0;
-    this.animState = false; //false = closing, true = opening
-    this.keyPress = function (event)
-    {
-        for (var b = 0; b < this.buttons.length; b++)
-        {
-            if (this.buttons[b].keyCode == event.keyCode && this.buttons[b].onPress != null)
-            {
-                this.buttons[b].onPress(this.buttons[b]);
-                Program.mouseBtn1Consumed = true;
-                return;
-            }
-        }
-        if (event.keyCode === 27) // esc
-        {
-            this.close();
-            return;
-        }
-        else if (event.keyCode === 192) // tab
-        {
-            console.log("run");
-            if (this.textboxes.length > 1)
-            {
-                console.log(this.textboxes);
-                for (var i = 0; i < this.textboxes[i].length; i++)
-                {
-                    console.log(i);
-                    if (this.textboxes[i].isFocused && this.textboxes.length > i + 1)
-                    {
-                        this.textboxes[i].isFocused = false;
-                        this.textboxes[i + 1].isFocused = true;
-                        console.log(i)
-                        Program.invalidate();
-                        return;
-                    }
-                }
-            }
-        }
-        for (var i = 0; i < this.textboxes.length; i++)
-        {
-            if (this.textboxes[i].isFocused)
-            {
-                this.textboxes[i].keyPress(event);
-                Program.invalidate();
-                return;
-            }
-        }
-        for (var i = 0; i < this.widgets.length; i++)
-        {
-            if (this.widgets[i].consumeKeys)
-            {
-                if (this.widgets[i].onKeyPress(event)) break;
-            }
-        }
-    }
-    this.onClick = function (x, y)
-    {
-        for (var i = 0; i < this.buttons.length; i++)
-        {
-            if (this.buttons[i].mouseInside(x, y))
-            {
-                Program.mouseBtn1Consumed = true;
-                this.buttons[i].onClick(this.buttons[i]);
-                return;
-            }
-        }
-        for (var i = 0; i < this.widgets.length; i++)
-        {
-            if (x > this.widgets[i].posX && x < this.widgets[i].posX + this.widgets[i].width
-                && y > this.widgets[i].posY && y < this.widgets[i].posY + this.widgets[i].height)
-            {
-                Program.mouseBtn1Consumed = true;
-                this.widgets[i].onClick(x - this.widgets[i].posX, y - this.widgets[i].posY);
-                Program.invalidate();
-                return;
-            }
-        }
-        for (var i = 0; i < this.textboxes.length; i++)
-        {
-            if (this.textboxes[i].mouseInside(x, y))
-            {
-                Program.mouseBtn1Consumed = true;
-                this.textboxes[i].isFocused = true;
-                Program.invalidate();
-            }
-            else
-            {
-                this.textboxes[i].isFocused = false;
-            }
-        }
-        Program.invalidate();
-    }
-    this.onMouseMoved = function (x, y)
-    {
-        for (var i = 0; i < this.buttons.length; i++)
-        {
-            if (this.buttons[i].mouseOver)
-            {
-                if (!this.buttons[i].mouseInside(x, y))
-                {
-                    this.buttons[i].mouseOver = false;
-                    Program.moveConsumed = true;
-                }
-            }
-            else
-            {
-                if (this.buttons[i].mouseInside(x, y))
-                {
-                    this.buttons[i].mouseOver = true;
-                    Program.moveConsumed = true;
-                }
-            }
-        }
-        for (var i = 0; i < this.widgets.length; i++)
-        {
-            if (x > this.widgets[i].posX && x < this.widgets[i].posX + this.widgets[i].width
-                && y > this.widgets[i].posY && y < this.widgets[i].posY + this.widgets[i].height)
-            {
-                Program.moveConsumed = true;
-                this.widgets[i].mouseMoved(x - this.widgets[i].posX, y - this.widgets[i].posY);
-                return;
-            } else if (this.widgets[i].type == 2)
-            {
-                this.widgets[i].hovered = 0;
-            }
-        }
-        if (Program.moveConsumed)
-            Program.invalidate();
-    }
-}
-function openKitWindow()
-{
-    if (Program.popup != null && (Program.popup.isOpen || Program.popup.isAnimating)) return;
-    Program.popup = Program.savedPopups[0];
-    Program.popup.open();
-}
-function openSaveWindow()
-{
-    if (Program.popup != null && (Program.popup.isOpen || Program.popup.isAnimating)) return;
-    Program.popup = Program.savedPopups[2];
-    Program.popup.open();
-}
-function keyPress(event)
-{
-    if (Program.popup != null && Program.popup.consumeKeys)
-        Program.popup.keyPress(event);
-    else if (Program.dictionary && Program.dictionary.consumeKeys)
-        Program.dictionary.keyPress(event);
-    else if (Program.wiki && Program.wiki.consumeKeys)
-        Program.wiki.keyPress(event);
-    else if (event.keyCode === 82) // r
-    {
-        Program.pages.propogateRotate();
-    }
-    else if (event.keyCode === 75) // k
-    {
-        openKitWindow();
-    }
-    else if (event.keyCode === 65 && event.shiftKey) // shift + a
-    {
-        if (Program.dictionary)
-            Program.dictionary.open();
-    }
-    else if (event.keyCode === 83 && event.ctrlKey) // ctrl + s
-    {
-        openSaveWindow();
-        if (event.preventDefault)
-            event.preventDefault();
-        if (event.stopPropagation)
-            event.stopPropagation();
-    }
-}
-function wrapText(ctx, text = "", maxWidth = 280, lineHeightDefault = 14)
-{
-    var words = text.split(" ");
-    var width = 0;
-    if (words.length == 1) return text;
-    var lines = [];
-    var line = "";
-    var size;
-    var canUseAdvHeight;
-    for (var i = 0; i < words.length; i++)
-    {
-        size = ctx.measureText(words[i]);
-        canUseAdvHeight = size.actualBoundingBoxAscent && size.actualBoundingBoxDescent;
-        if (size.width + width > maxWidth)
-        {
-            lines.push({ text: line, height: canUseAdvHeight ? size.actualBoundingBoxAscent + size.actualBoundingBoxDescent : lineHeightDefault });
-            width = size.width;
-            line = words[i];
-        }
-        else
-        {
-            if (i != 0) line += " ";
-            line += words[i];
-            width += size.width;
-        }
-    }
-    if (width > 0)
-        lines.push({ text: line, height: canUseAdvHeight ? size.actualBoundingBoxAscent + size.actualBoundingBoxDescent : lineHeightDefault });
-    return lines;
-}
-function centerText(ctx, text, width, height, backupHeight = 17)
-{
-    var size = ctx.measureText(text);
-    var h = size.actualBoundingBoxAscent && size.actualBoundingBoxDescent ? size.actualBoundingBoxAscent + size.actualBoundingBoxDescent : backupHeight;
-    return { width: width / 2 - size.width / 2, height: height / 2 + h / 2 };
-}
-function onSuccessSend(response, textStatus = "", jqXHR)
-{
-    console.log(`Successfully posted: ${textStatus}.`);
-    console.log(response);
-}
-function onSendError(jqXHR, textStatus = "", errorThrown)
-{
-    console.error(`Failed to post: ${textStatus}.`);
-    console.error(errorThrown);
-}
-function call(data, handler, response = onSuccessSend, error = onSendError)
-{
-    try
-    {
-        if (!data) data = new Object();
-        return $.ajax({
-            type: "POST",
-            url: "/Loadouts/" + handler,
-            contentType: 'application/json; charset=utf-8',
-            dataType: "json",
-            data: JSON.stringify(data),
-            success: response,
-            error: error
-        });
-    }
-    catch (ex)
-    {
-        console.error(`Error posting "/${url}?handler=${handler}"`);
-        console.error(data);
-        console.error(ex);
-        error(null, "Exception thrown", ex);
-    }
-}
-const ctxMenuHeaderSize = 30;
-const ctxMenuFontSize = 12;
-const ctxButtonHeight = 20;
-const ctxMinWidth = 90;
 function ContextMenu(title = "TITLE", buttons = [])
 {
     this.title = title;
@@ -2828,8 +2012,8 @@ function ContextMenu(title = "TITLE", buttons = [])
     this.width = 0;
     this.height = 0;
     this.margin = 4;
-    this.radiusTop = getRadius2(4, 4, 0, 0);
-    this.radiusBottom = getRadius2(0, 0, 4, 4);
+    this.radiusTop = new Radius(4, 4, 0, 0);
+    this.radiusBottom = new Radius(0, 0, 4, 4);
     this.up = false;
     this.left = false;
     this.titleHeight = 0;
@@ -2837,25 +2021,25 @@ function ContextMenu(title = "TITLE", buttons = [])
     {
         this.posX = x;
         this.posY = y;
-        ctx.font = ctxMenuFontSize.toString() + "px Segoe UI";
+        ctx.font = C.ctxMenuFontSize.toString() + "px Segoe UI";
         this.width = this.margin;
         var measure;
         var highest = 0;
         this.height = 0;
         if (this.title.length > 0)
         {
-            this.height = this.title.length > 0 ? ctxMenuHeaderSize : 0;
-            measure = m(ctx, this.title, ctxMenuFontSize);
+            this.height = this.title.length > 0 ? C.ctxMenuHeaderSize : 0;
+            measure = new TextMeasurement(ctx, this.title, C.ctxMenuFontSize);
             highest = measure.width;
             this.titleHeight = measure.up;
         }
-        if (highest < ctxMinWidth) highest = ctxMinWidth;
+        if (highest < C.ctxMinWidth) highest = C.ctxMinWidth;
         for (var i = 0; i < this.buttons.length; i++)
         {
             this.height += this.buttons[i].height;
             if (this.buttons[i].text)
             {
-                measure = m(ctx, this.buttons[i].text, ctxMenuFontSize);
+                measure = new TextMeasurement(ctx, this.buttons[i].text, C.ctxMenuFontSize);
                 this.buttons[i].textHeight = measure.up;
                 if (highest < measure.width)
                     highest = measure.width;
@@ -2871,12 +2055,12 @@ function ContextMenu(title = "TITLE", buttons = [])
         var py = this.up ? this.posY - this.height : this.posY;
         ctx.fillStyle = "#888888";
         ctx.strokeStyle = "#000000";
-        ctx.font = ctxMenuFontSize.toString() + "px bold Segoe UI";
+        ctx.font = C.ctxMenuFontSize.toString() + "px bold Segoe UI";
         if (this.title.length > 0)
         {
-            roundedRect(ctx, px, py, this.width, ctxMenuHeaderSize, this.radiusTop, true, true);
+            roundedRect(ctx, px, py, this.width, C.ctxMenuHeaderSize, this.radiusTop, true, true);
             ctx.fillStyle = "#ffffff";
-            py += ctxMenuHeaderSize;
+            py += C.ctxMenuHeaderSize;
         }
         for (var i = 0; i < this.buttons.length; i++)
         {
@@ -2898,34 +2082,11 @@ function ContextMenu(title = "TITLE", buttons = [])
 }
 function ContextButton(text = "BUTTON", callback)
 {
-    this.height = ctxButtonHeight;
+    this.height = C.ctxButtonHeight;
     this.text = text;
     this.callback = callback;
     this.textHeight = 0;
 }
-const dictionaryAnimTimeSec = 0.2;
-const dictionaryAccent1 = "#9264cd";
-const dictionaryAccent2 = "#532c87";
-const dictionaryAccent3 = "#bb9fe0";
-const dictionaryAccent4Disabled = "#553355";
-const dictionaryBackground = "#0d0d0d";
-const dictionaryBackgroundAccent = "#1f0d1f";
-const dictionaryBackgroundAccentHovered = "#0f0d0f";
-const dictionaryBackgroundAccentOpposite = "#f5ffff";
-const dictionaryFilterEnabled = "#3399ff";
-const dictionaryFilterDisabled = "#e6e6e6";
-const dictionaryBkgrTransparency = 0.2;
-const dictionaryTitleTextSize = 20;
-const dictionaryEntryTitleTextSize = 20;
-const dictionaryEntryBodyTextSize = 16;
-const dictionaryFilterTextSize = 14;
-const dictionaryHeaderSize = 40;
-const dictionaryFooterSize = 80;
-const dictionaryFilterCountSpace = 5;
-const dictionaryFilterColumns = 6;
-const dictionaryItemColumns = 5;
-const dictionaryButtonSize = 60;
-const dictionaryItemRows = 3;
 function Filter(name = "", predicate = (itemData) => true)
 {
     this.enabled = false;
@@ -2937,8 +2098,8 @@ function Filter(name = "", predicate = (itemData) => true)
     this.width = 0;
     this.height = 0;
     this.index = 0;
-    this.fullRadius = getRadius(4);
-    this.enabledRadius = getRadius2(4, 0, 4, 0);
+    this.fullRadius = new Radius(4);
+    this.enabledRadius = new Radius(4, 0, 4, 0);
     this.found = 0;
     this.owner = null;
     this.x = 0;
@@ -2950,26 +2111,26 @@ function Filter(name = "", predicate = (itemData) => true)
         this.y = yOffset + this.posY;
         if (this.enabled)
         {
-            ctx.strokeStyle = dictionaryAccent1;
+            ctx.strokeStyle = C.dictionaryAccent1;
         }
-        ctx.fillStyle = dictionaryFilterDisabled;
-        ctx.strokeStyle = dictionaryBackground;
+        ctx.fillStyle = C.dictionaryFilterDisabled;
+        ctx.strokeStyle = C.dictionaryBackground;
         ctx.strokeWeight = 3;
         roundedRect(ctx, xOffset + this.posX, yOffset + this.posY, this.width, this.height, this.fullRadius, true, !this.enabled);
         if (this.enabled)
         {
-            ctx.fillStyle = this.enabled ? dictionaryFilterEnabled : dictionaryFilterDisabled;
+            ctx.fillStyle = this.enabled ? C.dictionaryFilterEnabled : C.dictionaryFilterDisabled;
             roundedRect(ctx, xOffset + this.posX, yOffset + this.posY, this.width / 6, this.height, this.enabledRadius, true, false);
             roundedRect(ctx, xOffset + this.posX, yOffset + this.posY, this.width, this.height, this.fullRadius, false, true);
         }
         ctx.strokeWeight = 1;
-        ctx.fillStyle = dictionaryFilterDisabled;
+        ctx.fillStyle = C.dictionaryFilterDisabled;
         roundedRect(ctx, xOffset + this.posX + this.width / 16, yOffset + this.posY + this.height / 6, 7 * this.width / 8, 2 * this.height / 3, this.fullRadius, true, false);
         var fontSize = Math.round(Program.canvas.height / 75);
         ctx.font = fontSize.toString() + 'px Segoe UI';
-        ctx.fillStyle = dictionaryFilterEnabled;
+        ctx.fillStyle = C.dictionaryFilterEnabled;
         ctx.textAlign = 'left';
-        var center = centerText(ctx, this.name, 7 * this.width / 8, 2 * this.height / 3, fontSize);
+        var center = CenteredTextData.centerText(ctx, this.name, 7 * this.width / 8, 2 * this.height / 3, fontSize);
         ctx.fillText(this.name, xOffset + this.posX + this.width / 16 + this.owner.margin / 3, yOffset + this.posY + this.height / 6 + center.height, 7 * this.width / 8);
         ctx.textAlign = 'right';
         ctx.fillText(this.found.toString(), xOffset + this.posX + 15 * this.width / 16 - this.owner.margin / 3, yOffset + this.posY + this.height / 6 + center.height);
@@ -2997,15 +2158,13 @@ function Filter(name = "", predicate = (itemData) => true)
         return x > this.x && x < this.x + this.width && y > this.y && y < this.y + this.height;
     }
 }
-const dictionaryEntryHoverOffset = 5;
-const dictionaryEntryHoverSpeed = 0.8;
 function DictionaryEntry(itemID = 0, itemData = null, owner = null)
 {
     this.itemID = itemID;
     this.itemData = itemData;
     this.index = 0;
     this.posX = 0;
-    this.tileradius = getRadius(radius);
+    this.tileradius = new Radius(C.radius);
     this.isHovered = false;
     this.posY = 0;
     this.icon = null;
@@ -3020,13 +2179,13 @@ function DictionaryEntry(itemID = 0, itemData = null, owner = null)
             this.icon = new Image(this.itemData.sizeX * 512, this.itemData.sizeY * 512);
             this.icon.id = this.itemID.toString();
             this.icon.onload = onImageLoad;
-            this.icon.src = itemIconPrefix + this.itemID.toString() + ".png";
+            this.icon.src = C.itemIconPrefix + this.itemID.toString() + ".png";
             Program.pages.iconCache.set(this.itemID, this.icon);
         }
     }
     this.width = 0;
     this.height = 0;
-    this.radius = getRadius(12);
+    this.radius = new Radius(12);
     this.owner = owner;
     this.margin = this.owner.margin / 2;
     this.firstHover = false;
@@ -3041,7 +2200,7 @@ function DictionaryEntry(itemID = 0, itemData = null, owner = null)
     {
         if (this.isHovered && !this.firstHover)
         {
-            this.hoverProgress += Program.deltaTime / dictionaryEntryHoverSpeed;
+            this.hoverProgress += Program.deltaTime / C.dictionaryEntryHoverSpeed;
             if (this.hoverProgress >= 1)
             {
                 this.onHoverComplete();
@@ -3059,7 +2218,7 @@ function DictionaryEntry(itemID = 0, itemData = null, owner = null)
         }
         if (this.itemData == null || this.itemID === 0)
         {
-            ctx.strokeStyle = dictionaryAccent1;
+            ctx.strokeStyle = C.dictionaryAccent1;
             ctx.strokeWeight = 5;
             roundedRect(ctx, x + this.posX, y + this.posY, this.width, this.height, this.radius, false, true);
             ctx.strokeWeight = 1;
@@ -3071,35 +2230,34 @@ function DictionaryEntry(itemID = 0, itemData = null, owner = null)
         }
         if (this.hoverProgress <= 0)
         {
-            ctx.fillStyle = dictionaryBackgroundAccent;
+            ctx.fillStyle = C.dictionaryBackgroundAccent;
         } else
         {
             var gradient = ctx.createLinearGradient(x + this.posX, y + this.posY + this.height, x + this.posX, y + this.posY);
             if (this.hoverProgress < 0.95)
             {
-                gradient.addColorStop(1, dictionaryBackgroundAccent);
-                gradient.addColorStop(this.hoverProgress < 0.85 ? this.hoverProgress + 0.15 : 1, dictionaryBackgroundAccent);
+                gradient.addColorStop(1, C.dictionaryBackgroundAccent);
+                gradient.addColorStop(this.hoverProgress < 0.85 ? this.hoverProgress + 0.15 : 1, C.dictionaryBackgroundAccent);
             }
             else
-                gradient.addColorStop(1, dictionaryBackgroundAccentHovered);
-            gradient.addColorStop(this.hoverProgress, dictionaryBackgroundAccentHovered);
-            gradient.addColorStop(0, dictionaryBackgroundAccentHovered);
+                gradient.addColorStop(1, C.dictionaryBackgroundAccentHovered);
+            gradient.addColorStop(this.hoverProgress, C.dictionaryBackgroundAccentHovered);
+            gradient.addColorStop(0, C.dictionaryBackgroundAccentHovered);
             ctx.fillStyle = gradient;
         }
-        ctx.strokeStyle = dictionaryAccent1;
+        ctx.strokeStyle = C.dictionaryAccent1;
         ctx.strokeWeight = 1;
-        var posy = this.isHovered ? y + this.posY - dictionaryEntryHoverOffset : y + this.posY;
-        var posx = this.isHovered ? x + this.posX - dictionaryEntryHoverOffset : x + this.posX;
-        var w = this.isHovered ? this.width + dictionaryEntryHoverOffset * 2 : this.width;
-        var h = this.isHovered ? this.height + dictionaryEntryHoverOffset * 2 : this.height;
+        var posy = this.isHovered ? y + this.posY - C.dictionaryEntryHoverOffset : y + this.posY;
+        var posx = this.isHovered ? x + this.posX - C.dictionaryEntryHoverOffset : x + this.posX;
+        var w = this.isHovered ? this.width + C.dictionaryEntryHoverOffset * 2 : this.width;
+        var h = this.isHovered ? this.height + C.dictionaryEntryHoverOffset * 2 : this.height;
         roundedRect(ctx, posx, posy, w, h, this.radius, true, true);
         posy += this.margin;
         posx += this.margin;
-        ctx.font = "bold " + dictionaryEntryTitleTextSize.toString() + "px Segoe UI";
+        ctx.font = "bold " + C.dictionaryEntryTitleTextSize.toString() + "px Segoe UI";
         ctx.textAlign = 'left';
-        ctx.fillStyle = dictionaryBackgroundAccentOpposite;
-        var measure = ctx.measureText(this.itemData.LocalizedName);
-        var height = measure.actualBoundingBoxAscent ? measure.actualBoundingBoxAscent : dictionaryEntryTitleTextSize;
+        ctx.fillStyle = C.dictionaryBackgroundAccentOpposite;
+        var height = TextMeasurement.height(ctx, this.itemData.LocalizedName, C.dictionaryEntryTitleTextSize);
         ctx.fillText(this.itemData.LocalizedName, x + this.posX + this.margin, posy + height, w - this.margin * 2);
         posy += height + this.margin;
         var pw = w - this.margin * 2;
@@ -3122,7 +2280,7 @@ function DictionaryEntry(itemID = 0, itemData = null, owner = null)
             {
                 roundedRectPath(ctx, px + x * scale, py + y * scale, scale, scale, this.tileradius);
                 ctx.globalAlpha = 0.5;
-                ctx.fillStyle = occupiedCellColor;
+                ctx.fillStyle = C.occupiedCellColor;
                 ctx.fill();
                 ctx.globalAlpha = 1.0;
                 ctx.strokeStyle = "#000000";
@@ -3166,7 +2324,6 @@ function DictionaryEntry(itemID = 0, itemData = null, owner = null)
         Program.dictionary.close();
     }
 }
-const blacklistedItems = [1522];
 function Dictionary()
 {
     this.gridSizeX = 8;
@@ -3209,7 +2366,7 @@ function Dictionary()
         this.filters[i].index = i;
         this.filters[i].owner = this;
     }
-    this.maxItems = dictionaryItemColumns * dictionaryItemRows;
+    this.maxItems = C.dictionaryItemColumns * C.dictionaryItemRows;
     this.updateFilters = function (bypass = false)
     {
         this.activeItems.splice(0);
@@ -3255,10 +2412,10 @@ function Dictionary()
     this.isOpen = false;
     this.willAnimate = false;
     this.isAnimating = false;
-    this.radius = getRadius2(16, 0, 16, 0);
-    this.buttonRadius = getRadius(4);
-    this.headerRadius = getRadius2(16, 0, 0, 0);
-    this.footerRadius = getRadius2(0, 0, 16, 0);
+    this.radius = new Radius(16, 0, 16, 0);
+    this.buttonRadius = new Radius(4);
+    this.headerRadius = new Radius(16, 0, 0, 0);
+    this.footerRadius = new Radius(0, 0, 16, 0);
     this.inited = false;
     this.updateDims = function (ctx)
     {
@@ -3267,26 +2424,26 @@ function Dictionary()
         this.finalPosX = Program.canvas.width - this.width;
         this.posY = 0;
         this.height = Program.canvas.height;
-        this.footerStartY = this.height - dictionaryFooterSize;
-        ctx.font = 'bold ' + dictionaryTitleTextSize + 'px Segoe UI';
+        this.footerStartY = this.height - C.dictionaryFooterSize;
+        ctx.font = 'bold ' + C.dictionaryTitleTextSize.toString() + 'px Segoe UI';
         ctx.textAlign = 'left';
-        this.titleYoffset = centerText(ctx, this.title + " - " + this.activeItems.length + " Items Visible", this.width, dictionaryHeaderSize, dictionaryTitleTextSize).height;
+        this.titleYoffset = CenteredTextData.centerTextHeight(ctx, this.title + " - " + this.activeItems.length + " Items Visible", C.dictionaryHeaderSize, C.dictionaryTitleTextSize);
         if (this.filters.length > 0)
         {
-            this.filterSectionHeight = (Program.canvas.height / 48 + this.margin / 2) * Math.ceil(this.filters.length / dictionaryFilterColumns);
-            var filterWidth = (this.width - this.margin * (2 + dictionaryFilterColumns)) / (dictionaryFilterColumns);
+            this.filterSectionHeight = (Program.canvas.height / 48 + this.margin / 2) * Math.ceil(this.filters.length / C.dictionaryFilterColumns);
+            var filterWidth = (this.width - this.margin * (2 + C.dictionaryFilterColumns)) / (C.dictionaryFilterColumns);
             for (var i = 0; i < this.filters.length; i++)
             {
                 var filter = this.filters[i];
                 filter.width = filterWidth;
                 filter.height = Program.canvas.height / 48;
-                filter.posX = this.margin + (i % dictionaryFilterColumns) * (filterWidth + this.margin);
-                filter.posY = dictionaryHeaderSize + this.margin + ((Program.canvas.height / 48 + this.margin / 2) * Math.floor(i / dictionaryFilterColumns));
+                filter.posX = this.margin + (i % C.dictionaryFilterColumns) * (filterWidth + this.margin);
+                filter.posY = C.dictionaryHeaderSize + this.margin + ((Program.canvas.height / 48 + this.margin / 2) * Math.floor(i / C.dictionaryFilterColumns));
             }
         }
-        this.gridStartY = dictionaryHeaderSize + this.margin + this.filterSectionHeight + this.margin;
-        this.itemWidth = (this.width - this.margin * (2 + dictionaryItemColumns)) / (dictionaryItemColumns);
-        this.gridHeight = this.height - dictionaryHeaderSize - dictionaryFooterSize - this.margin * 2 - this.filterSectionHeight;
+        this.gridStartY = C.dictionaryHeaderSize + this.margin + this.filterSectionHeight + this.margin;
+        this.itemWidth = (this.width - this.margin * (2 + C.dictionaryItemColumns)) / (C.dictionaryItemColumns);
+        this.gridHeight = this.height - C.dictionaryHeaderSize - C.dictionaryFooterSize - this.margin * 2 - this.filterSectionHeight;
         for (var i = 0; i < this.maxItems; i++)
         {
             var entry = this.entries[i];
@@ -3297,13 +2454,13 @@ function Dictionary()
                 this.entries.push(entry);
             }
             entry.width = this.itemWidth;
-            entry.height = (this.gridHeight / dictionaryItemRows) - this.margin;
-            entry.posX = this.margin + (i % dictionaryItemColumns) * (this.itemWidth + this.margin);
-            entry.posY = dictionaryHeaderSize + this.margin + this.filterSectionHeight + this.margin + ((entry.height + this.margin) * Math.floor(i / dictionaryItemColumns));
+            entry.height = (this.gridHeight / C.dictionaryItemRows) - this.margin;
+            entry.posX = this.margin + (i % C.dictionaryItemColumns) * (this.itemWidth + this.margin);
+            entry.posY = C.dictionaryHeaderSize + this.margin + this.filterSectionHeight + this.margin + ((entry.height + this.margin) * Math.floor(i / C.dictionaryItemColumns));
         }
-        this.backX = this.width / 2 - dictionaryButtonSize - this.margin / 2;
+        this.backX = this.width / 2 - C.dictionaryButtonSize - this.margin / 2;
         this.nextX = this.width / 2 + this.margin / 2;
-        this.buttonY = this.footerStartY + (dictionaryFooterSize - dictionaryButtonSize) / 2;
+        this.buttonY = this.footerStartY + (C.dictionaryFooterSize - C.dictionaryButtonSize) / 2;
         this.inited = true;
     }
     this.open = function ()
@@ -3363,7 +2520,7 @@ function Dictionary()
                 else
                 {
                     this.renderAt(ctx, this.lerp(), this.posY, this.currentAnimAlpha);
-                    this.currentAnimAlpha += dt / dictionaryAnimTimeSec;
+                    this.currentAnimAlpha += dt / C.dictionaryAnimTimeSec;
                     return true;
                 }
             }
@@ -3381,7 +2538,7 @@ function Dictionary()
                 else
                 {
                     this.renderAt(ctx, this.lerp(), this.posY, this.currentAnimAlpha);
-                    this.currentAnimAlpha -= dt / dictionaryAnimTimeSec;
+                    this.currentAnimAlpha -= dt / C.dictionaryAnimTimeSec;
                     return true;
                 }
             }
@@ -3394,7 +2551,7 @@ function Dictionary()
     }
     this.exp = function (alpha)
     {
-        return Math.pow(expConst, Math.pow(expConst, 0.5 * alpha) * alpha - 1) - Math.pow(expConst, -1);
+        return Math.pow(C.expConst, Math.pow(C.expConst, 0.5 * alpha) * alpha - 1) - Math.pow(C.expConst, -1);
     }
     this.lerp = function ()
     {
@@ -3407,37 +2564,36 @@ function Dictionary()
     {
         if (bkgrAlpha > 0)
         {
-            ctx.globalAlpha = bkgrAlpha * dictionaryBkgrTransparency;
+            ctx.globalAlpha = bkgrAlpha * C.dictionaryBkgrTransparency;
             ctx.fillStyle = "#000000";
             ctx.strokeWeight = 0;
             ctx.fillRect(0, 0, Program.canvas.width, Program.canvas.height);
         }
         ctx.globalAlpha = 1.0;
         if (y >= Program.canvas.width) return;
-        ctx.fillStyle = dictionaryBackground;
-        ctx.strokeStyle = dictionaryAccent1;
+        ctx.fillStyle = C.dictionaryBackground;
+        ctx.strokeStyle = C.dictionaryAccent1;
         ctx.strokeWeight = 1;
         roundedRect(ctx, x, y, this.width, this.height, this.radius, true, true);
         ctx.strokeStyle = "#000000";
-        ctx.fillStyle = dictionaryAccent1;
-        roundedRect(ctx, x, y, this.width, dictionaryHeaderSize, this.headerRadius, true, false);
+        ctx.fillStyle = C.dictionaryAccent1;
+        roundedRect(ctx, x, y, this.width, C.dictionaryHeaderSize, this.headerRadius, true, false);
         ctx.fillStyle = "#ffffff";
-        ctx.font = 'bold ' + dictionaryTitleTextSize + 'px Segoe UI';
+        ctx.font = 'bold ' + C.dictionaryTitleTextSize.toString() + 'px Segoe UI';
         ctx.textAlign = 'left';
-        //var ypos = y + dictionaryHeaderSize;
         ctx.fillText(this.title + " - " + this.activeItems.length + " Items Visible", x + this.margin, y + this.titleYoffset, this.width - this.margin * 2);
         ctx.fillStyle = "#333333";
-        ctx.fillRect(x + 1, y + dictionaryHeaderSize, this.width - 2, this.filterSectionHeight + this.margin * 2);
+        ctx.fillRect(x + 1, y + C.dictionaryHeaderSize, this.width - 2, this.filterSectionHeight + this.margin * 2);
         for (var i = 0; i < this.filters.length; i++)
             this.filters[i].render(ctx, x, y);
         for (var i = 0; i < this.entries.length; i++)
             this.entries[i].render(ctx, x, y);
-        ctx.fillStyle = dictionaryAccent1;
-        roundedRect(ctx, x, this.footerStartY, this.width, dictionaryFooterSize, this.footerRadius, true, false);
-        ctx.fillStyle = this.currentPage === 0 ? dictionaryAccent4Disabled : (this.backHovered ? dictionaryAccent3 : dictionaryAccent2);
-        roundedArrow(ctx, x + this.backX, this.buttonY, dictionaryButtonSize, dictionaryButtonSize, this.buttonRadius, true, false, true);
-        ctx.fillStyle = (this.currentPage + 1) * this.maxItems >= this.activeItems.length ? dictionaryAccent4Disabled : (this.nextHovered ? dictionaryAccent3 : dictionaryAccent2);
-        roundedArrow(ctx, x + this.nextX, this.buttonY, dictionaryButtonSize, dictionaryButtonSize, this.buttonRadius, true, false, false);
+        ctx.fillStyle = C.dictionaryAccent1;
+        roundedRect(ctx, x, this.footerStartY, this.width, C.dictionaryFooterSize, this.footerRadius, true, false);
+        ctx.fillStyle = this.currentPage === 0 ? C.dictionaryAccent4Disabled : (this.backHovered ? C.dictionaryAccent3 : C.dictionaryAccent2);
+        roundedArrow(ctx, x + this.backX, this.buttonY, C.dictionaryButtonSize, C.dictionaryButtonSize, this.buttonRadius, true, false, true);
+        ctx.fillStyle = (this.currentPage + 1) * this.maxItems >= this.activeItems.length ? C.dictionaryAccent4Disabled : (this.nextHovered ? C.dictionaryAccent3 : C.dictionaryAccent2);
+        roundedArrow(ctx, x + this.nextX, this.buttonY, C.dictionaryButtonSize, C.dictionaryButtonSize, this.buttonRadius, true, false, false);
 
     }
     this.backHovered = false;
@@ -3473,7 +2629,7 @@ function Dictionary()
         }
         else
         {
-            if (x > this.finalPosX + this.backX - dictionaryButtonSize / 2 && x < this.finalPosX + this.backX + dictionaryButtonSize && y > this.buttonY && y < this.buttonY + dictionaryButtonSize)
+            if (x > this.finalPosX + this.backX - C.dictionaryButtonSize / 2 && x < this.finalPosX + this.backX + C.dictionaryButtonSize && y > this.buttonY && y < this.buttonY + C.dictionaryButtonSize)
             {
                 if (this.currentPage > 0)
                 {
@@ -3484,7 +2640,7 @@ function Dictionary()
                 Program.mouseBtn1Consumed = true;
                 return;
             }
-            else if (x > this.finalPosX + this.nextX && x < this.finalPosX + this.nextX + dictionaryButtonSize * 1.5 && y > this.buttonY && y < this.buttonY + dictionaryButtonSize)
+            else if (x > this.finalPosX + this.nextX && x < this.finalPosX + this.nextX + C.dictionaryButtonSize * 1.5 && y > this.buttonY && y < this.buttonY + C.dictionaryButtonSize)
             {
                 if ((this.currentPage + 1) * this.maxItems < this.activeItems.length)
                 {
@@ -3540,14 +2696,14 @@ function Dictionary()
     this.onMouseMoved = function (x, y)
     {
         if (!this.consumeKeys || this.isAnimating) return;
-        if (x > this.finalPosX + this.backX - dictionaryButtonSize / 2 && x < this.finalPosX + this.backX + dictionaryButtonSize && y > this.buttonY && y < this.buttonY + dictionaryButtonSize)
+        if (x > this.finalPosX + this.backX - C.dictionaryButtonSize / 2 && x < this.finalPosX + this.backX + C.dictionaryButtonSize && y > this.buttonY && y < this.buttonY + C.dictionaryButtonSize)
         {
             this.backHovered = true;
             this.nextHovered = false;
             Program.moveConsumed = true;
             Program.invalidate();
         }
-        else if (x > this.finalPosX + this.nextX && x < this.finalPosX + this.nextX + dictionaryButtonSize * 1.5 && y > this.buttonY && y < this.buttonY + dictionaryButtonSize)
+        else if (x > this.finalPosX + this.nextX && x < this.finalPosX + this.nextX + C.dictionaryButtonSize * 1.5 && y > this.buttonY && y < this.buttonY + C.dictionaryButtonSize)
         {
             this.nextHovered = true;
             this.backHovered = false;
@@ -3578,10 +2734,6 @@ function Dictionary()
         }
     }
 }
-const wikiIconSize = 32;
-const wikiFieldHeight = 48;
-const maxFieldsPerRow = 6;
-const wikiBackground = "#f0f0f0";
 function Wiki()
 {
     this.title = "WIKI";
@@ -3596,8 +2748,8 @@ function Wiki()
     this.reopenToDictionary = false;
     this.willAnimate = false;
     this.isAnimating = false;
-    this.radius = getRadius(16);
-    this.headerRadius = getRadius2(16, 16, 0, 0);
+    this.radius = new Radius(16);
+    this.headerRadius = new Radius(16, 16, 0, 0);
     this.inited = false;
     this.currentItem = null;
     this.updateDims = function (ctx)
@@ -3605,18 +2757,18 @@ function Wiki()
         this.width = Program.canvas.width / 1.5;
         this.posX = Program.canvas.width / 2 - this.width / 2;
         this.startPosY = Program.canvas.height * 1.05;
-        ctx.font = popupDescTextSize.toString() + 'px Segoe UI';
+        ctx.font = C.popupDescTextSize.toString() + 'px Segoe UI';
         ctx.textAlign = 'left';
-        this.wrappedMessage = wrapText(ctx, this.message, this.width - this.margin * 2, popupDescTextSize);
+        this.wrappedMessage = WrappedLine.wrapText(ctx, this.message, this.width - this.margin * 2, C.popupDescTextSize);
         this.textHeight = 0;
         for (var i = 0; i < this.wrappedMessage.length; i++)
-            this.textHeight += this.wrappedMessage[i].height + popupDescLineSpacing;
-        this.height = popupHeaderHeight + this.margin + this.textHeight + this.margin + this.getContentHeight(ctx) + this.margin;
+            this.textHeight += this.wrappedMessage[i].height + C.popupDescLineSpacing;
+        this.height = C.popupHeaderHeight + this.margin + this.textHeight + this.margin + this.getContentHeight(ctx) + this.margin;
         this.finalPosY = Program.canvas.height / 2 - this.height / 2;
-        ctx.font = 'bold ' + popupTitleTextSize + 'px Segoe UI';
+        ctx.font = 'bold ' + C.popupTitleTextSize.toString() + 'px Segoe UI';
         ctx.textAlign = 'left';
-        this.titleYoffset = centerText(ctx, this.title, this.width, popupHeaderHeight, popupTitleTextSize).height;
-        this.contentYStart = popupHeaderHeight + this.margin + this.textHeight + this.margin;
+        this.titleYoffset = CenteredTextData.centerTextHeight(ctx, this.title, C.popupHeaderHeight, C.popupTitleTextSize);
+        this.contentYStart = C.popupHeaderHeight + this.margin + this.textHeight + this.margin;
         this.inited = true;
     }
     this.open = function ()
@@ -3672,7 +2824,7 @@ function Wiki()
                 else
                 {
                     this.renderAt(ctx, this.posX, this.lerp(), this.currentAnimAlpha);
-                    this.currentAnimAlpha += dt / popupAnimTimeSec;
+                    this.currentAnimAlpha += dt / C.popupAnimTimeSec;
                     return true;
                 }
             }
@@ -3690,7 +2842,7 @@ function Wiki()
                 else
                 {
                     this.renderAt(ctx, this.posX, this.lerp(), this.currentAnimAlpha);
-                    this.currentAnimAlpha -= dt / popupAnimTimeSec;
+                    this.currentAnimAlpha -= dt / C.popupAnimTimeSec;
                     return true;
                 }
             }
@@ -3703,7 +2855,7 @@ function Wiki()
     }
     this.exp = function (alpha)
     {
-        return Math.pow(expConst, Math.pow(expConst, 0.5 * alpha) * alpha - 1) - Math.pow(expConst, -1);
+        return Math.pow(C.expConst, Math.pow(C.expConst, 0.5 * alpha) * alpha - 1) - Math.pow(C.expConst, -1);
     }
     this.lerp = function ()
     {
@@ -3716,30 +2868,30 @@ function Wiki()
     {
         if (bkgrAlpha > 0)
         {
-            ctx.globalAlpha = bkgrAlpha * popupBkgrTransparency;
+            ctx.globalAlpha = bkgrAlpha * C.popupBkgrTransparency;
             ctx.fillStyle = "#000000";
             ctx.fillRect(0, 0, Program.canvas.width, Program.canvas.height);
         }
         ctx.globalAlpha = 1.0;
         if (y >= Program.canvas.height) return;
-        ctx.fillStyle = wikiBackground;
-        ctx.strokeStyle = popupAccent1;
+        ctx.fillStyle = C.wikiBackground;
+        ctx.strokeStyle = C.popupAccent1;
         roundedRect(ctx, x, y, this.width, this.height, this.radius, true, true);
         ctx.strokeStyle = "#000000";
-        ctx.fillStyle = popupAccent1;
-        roundedRect(ctx, x, y, this.width, popupHeaderHeight, this.headerRadius, true, false);
+        ctx.fillStyle = C.popupAccent1;
+        roundedRect(ctx, x, y, this.width, C.popupHeaderHeight, this.headerRadius, true, false);
         ctx.fillStyle = "#000000";
-        ctx.font = 'bold ' + popupTitleTextSize + 'px Segoe UI';
+        ctx.font = 'bold ' + C.popupTitleTextSize.toString() + 'px Segoe UI';
         ctx.textAlign = 'left';
-        var ypos = y + popupHeaderHeight;
+        var ypos = y + C.popupHeaderHeight;
         ctx.fillText(this.title, x + this.margin, y + this.titleYoffset, this.width - this.margin * 2);
-        ctx.font = popupDescTextSize.toString() + 'px Segoe UI';
+        ctx.font = C.popupDescTextSize.toString() + 'px Segoe UI';
         ypos += this.margin;
         for (var i = 0; i < this.wrappedMessage.length; i++)
         {
             ypos += this.wrappedMessage[i].height;
             ctx.fillText(this.wrappedMessage[i].text, x + this.margin, ypos, this.width - this.margin * 2);
-            if (i != this.wrappedMessage.length - 1) ypos += popupDescLineSpacing;
+            if (i != this.wrappedMessage.length - 1) ypos += C.popupDescLineSpacing;
         }
         this.renderCustom(ctx, ypos);
     }
@@ -4058,7 +3210,7 @@ function Wiki()
         var typeTxt = `${this.currentItem.Type}`;
         var rarityTxt = `${this.currentItem.Rarity}`;
         ctx.fillStyle = "#000000";
-        ctx.font = popupDescTextSize.toString() + 'px Segoe UI';
+        ctx.font = C.popupDescTextSize.toString() + 'px Segoe UI';
         var len1 = m(ctx, sizeTxt, popupDescTextSize);
         var len2 = m(ctx, typeTxt, popupDescTextSize);
         var len3 = m(ctx, rarityTxt, popupDescTextSize);
@@ -4067,7 +3219,7 @@ function Wiki()
         if (!onlyCalc)
         {
             var img = new Image(imageSize, imageSize);
-            img.src = statIconPrefix + "SizeX.svg";
+            img.src = C.statIconPrefix + "SizeX.svg";
             ctx.drawImage(img, xpos, ypos, imageSize, imageSize);
             ctx.fillText(sizeTxt, xpos + imageSize + this.margin / 2, ypos + imageSize - (imageSize / 2 - len1.height / 2));
         }
@@ -4345,4 +3497,81 @@ function sendKit(btn)
             console.warn("Failed to verify kit data.");
         }
     });
+}
+/** @param {KeyboardEvent} event */
+function keyPress(event)
+{
+    if (Program.popup != null && Program.popup.consumeKeys)
+        Program.popup.keyPress(event);
+    else if (Program.dictionary && Program.dictionary.consumeKeys)
+        Program.dictionary.keyPress(event);
+    else if (Program.wiki && Program.wiki.consumeKeys)
+        Program.wiki.keyPress(event);
+    else if (event.keyCode === 82) // r
+    {
+        Program.pages.propogateRotate();
+    }
+    else if (event.keyCode === 75) // k
+    {
+        openKitWindow();
+    }
+    else if (event.keyCode === 65 && event.shiftKey) // shift + a
+    {
+        if (Program.dictionary)
+            Program.dictionary.open();
+    }
+    else if (event.keyCode === 83 && event.ctrlKey) // ctrl + s
+    {
+        openSaveWindow();
+        if (event.preventDefault)
+            event.preventDefault();
+        if (event.stopPropagation)
+            event.stopPropagation();
+    }
+}
+function onSuccessSend(response, textStatus = "", jqXHR)
+{
+    console.log(`Successfully posted: ${textStatus}.`);
+    console.log(response);
+}
+function onSendError(jqXHR, textStatus = "", errorThrown)
+{
+    console.error(`Failed to post: ${textStatus}.`);
+    console.error(errorThrown);
+}
+function call(data, handler, response = onSuccessSend, error = onSendError)
+{
+    try
+    {
+        if (!data) data = new Object();
+        return $.ajax({
+            type: "POST",
+            url: "/Loadouts/" + handler,
+            contentType: 'application/json; charset=utf-8',
+            dataType: "json",
+            data: JSON.stringify(data),
+            success: response,
+            error: error
+        });
+    }
+    catch (ex)
+    {
+        console.error(`Error posting "/${url}?handler=${handler}"`);
+        console.error(data);
+        console.error(ex);
+        error(null, "Exception thrown", ex);
+    }
+}
+
+function openKitWindow()
+{
+    if (Program.popup != null && (Program.popup.isOpen || Program.popup.isAnimating)) return;
+    Program.popup = Program.savedPopups[0];
+    Program.popup.open();
+}
+function openSaveWindow()
+{
+    if (Program.popup != null && (Program.popup.isOpen || Program.popup.isAnimating)) return;
+    Program.popup = Program.savedPopups[2];
+    Program.popup.open();
 }
