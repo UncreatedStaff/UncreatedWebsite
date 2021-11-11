@@ -1,3 +1,5 @@
+import { Program } from "./editor.js";
+
 export class Radius 
 {
     /** @type {number} */
@@ -18,9 +20,9 @@ export class Radius
     constructor(tl, tr = null, bl = null, br = null) 
     {
         this.tl = tl;
-        this.tr = tr ? tr : tl;
-        this.bl = bl ? bl : tl;
-        this.br = br ? br : tr;
+        this.tr = tr !== null ? tr : tl;
+        this.bl = bl !== null  ? bl : tl;
+        this.br = br !== null  ? br : tl;
     }
 }
 export class WrappedLine 
@@ -53,6 +55,7 @@ export class WrappedLine
         if (words.length === 1) 
         {
             size = ctx.measureText(text);
+            console.log(words);
             var canUseAdvHeight = size.actualBoundingBoxAscent && size.actualBoundingBoxDescent;
             return new WrappedLine(text, canUseAdvHeight ? size.actualBoundingBoxAscent + size.actualBoundingBoxDescent : lineHeightDefault);
         }
@@ -278,4 +281,65 @@ export function getScale(outerX, outerY, innerX, innerY)
     {
         return Math.min(outerX, outerY) / innerY;
     }
+}
+
+/**
+ * @param {string} ascii 
+ * @returns {Uint8Array}
+ */
+export function asciiToUint8Array(ascii)
+{
+    var arr = new Uint8Array(ascii.length);
+    for (var i = 0; i < ascii.length; i++)
+    {
+        arr[i] = ascii.charCodeAt(i);
+    }
+    return arr;
+}
+
+/**
+ * Draw the rounded arrow at the bottom of a dictionary page.
+ * @param {CanvasRenderingContext2D} ctx 
+ * @param {number} x 
+ * @param {number} y 
+ * @param {number} width 
+ * @param {number} height 
+ * @param {Radius} radius 
+ * @param {number} fill 
+ * @param {number} stroke 
+ * @param {number} left Is facing left
+ * @returns {void}
+ */
+export function roundedArrow(ctx, x = 0, y = 0, width = 128, height = 128, radius, fill = false, stroke = true, left = true)
+{
+    if (!(stroke || fill)) return;
+    if (left)
+    {
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x + width - radius.tr, y);
+        ctx.quadraticCurveTo(x + width, y, x + width, y + radius.tr);
+        ctx.lineTo(x + width, y + height - radius.br);
+        ctx.quadraticCurveTo(x + width, y + height, x + width - radius.br, y + height);
+        ctx.lineTo(x, y + height);
+        ctx.lineTo(x - width / 2, y + height / 2);
+        ctx.lineTo(x, y);
+        ctx.closePath();
+    } else
+    {
+        ctx.beginPath();
+        ctx.moveTo(x + radius.tl, y);
+        ctx.lineTo(x + width, y);
+        ctx.lineTo(x + 3 * width / 2, y + height / 2);
+        ctx.lineTo(x + width, y + height);
+        ctx.lineTo(x + radius.bl, y + height);
+        ctx.quadraticCurveTo(x, y + height, x, y + height - radius.bl);
+        ctx.lineTo(x, y + radius.tl);
+        ctx.quadraticCurveTo(x, y, x + radius.tl, y);
+        ctx.closePath();
+    }
+    if (fill)
+        ctx.fill();
+    if (stroke)
+        ctx.stroke();
 }

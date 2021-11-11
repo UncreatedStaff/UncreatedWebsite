@@ -1,5 +1,6 @@
 import { Radius } from "./util.js";
-export const SLOT_RADIUS = new Radius(C.radius);
+export const radius = 2;
+export const SLOT_RADIUS = new Radius(radius);
 export const popupAnimTimeSec = 0.3;
 export const popupBkgrTransparency = 0.375;
 export const popupHeaderHeight = 40;
@@ -18,7 +19,6 @@ export const popupBackground = "#0d0d0d";
 export const expConst = 2.1899243665;
 export const blinkTime = 1.5;
 export const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-export const radius = 2;
 export const margin = 0;
 export const titleRadius = 4;
 export const pageTitleFontSize = 17;

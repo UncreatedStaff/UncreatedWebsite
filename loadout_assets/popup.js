@@ -32,7 +32,7 @@ export class Popup
     /** @type {Radius} */
     #headerRadius;
     /** @type {number} */
-    #margin;
+    margin;
     /** @type {boolean} */
     #inited;
     /** @type {boolean} false: closing, true: opening */
@@ -66,7 +66,7 @@ export class Popup
      * @param {PopupWidget[]} widgets 
      * @param {boolean} darkenBackground 
      */
-    constructor(title, message, buttons, textboxes, widgets, darkenBackground = true)
+    constructor(title, message, buttons = null, textboxes = null, widgets = null, darkenBackground = true)
     {
         this.title = title;
         this.message = message;
@@ -86,7 +86,7 @@ export class Popup
         this.#inited = false;
         this.#animState = false;
         this.#currentAnimAlpha = 0.0;
-        this.#margin = 16;
+        this.margin = 16;
     }
     reset()
     {
@@ -116,19 +116,20 @@ export class Popup
             this.#textHeight += this.#wrappedMessage[i].height + C.popupDescLineSpacing;
         var wh = 0;
         for (var i = 0; i < this.widgets.length; i++)
-            wh += this.widgets[i].defaultHeight;
-        this.height = C.popupHeaderHeight + this.margin + this.textHeight + this.margin + (this.margin + C.popupTextboxHeight) * this.textboxes.length + this.margin + wh + (this.buttons.length == 0 ? 0 : C.popupButtonHeight + this.margin);
+            if (!isNaN(this.widgets[i].defaultHeight))
+                wh += this.widgets[i].defaultHeight;
+        this.height = C.popupHeaderHeight + this.margin + this.#textHeight + this.margin + (this.margin + C.popupTextboxHeight) * this.textboxes.length + this.margin + wh + (this.buttons.length == 0 ? 0 : C.popupButtonHeight + this.margin);
         this.#finalPosY = Program.canvas.height / 2 - this.height / 2;
         ctx.font = 'bold ' + C.popupTitleTextSize.toString() + 'px Segoe UI';
         ctx.textAlign = 'left';
         this.#titleYoffset = CenteredTextData.centerTextHeight(ctx, this.title, C.popupHeaderHeight, C.popupTitleTextSize);
-        this.#buttonWidth = ((this.width - this.#margin) / this.buttons.length) - this.#margin;
+        this.#buttonWidth = ((this.width - this.margin) / this.buttons.length) - this.margin;
         for (var i = 0; i < this.buttons.length; i++)
             this.buttons[i].updateDims(ctx, this.#buttonWidth, C.popupButtonHeight);
         for (var i = 0; i < this.widgets.length; i++)
-            this.widgets[i].updateDims(ctx, this.width - this.#margin * 2, this.widgets[i].defaultHeight);
+            this.widgets[i].updateDims(ctx, this.width - this.margin * 2, this.widgets[i].defaultHeight);
         for (var i = 0; i < this.textboxes.length; i++)
-            this.textboxes[i].updateDims(ctx, this.width - this.#margin * 2, C.popupTextboxHeight);
+            this.textboxes[i].updateDims(ctx, this.width - this.margin * 2, C.popupTextboxHeight);
         this.inited = true;
     }
     /**
@@ -275,34 +276,34 @@ export class Popup
         ctx.font = 'bold ' + C.popupTitleTextSize.toString() + 'px Segoe UI';
         ctx.textAlign = 'left';
         var ypos = y + C.popupHeaderHeight;
-        ctx.fillText(this.title, x + this.#margin, y + this.#titleYoffset, this.width - this.#margin * 2);
+        ctx.fillText(this.title, x + this.margin, y + this.#titleYoffset, this.width - this.margin * 2);
         ctx.font = C.popupDescTextSize.toString() + 'px Segoe UI';
-        ypos += this.#margin;
+        ypos += this.margin;
         for (var i = 0; i < this.#wrappedMessage.length; i++)
         {
             ypos += this.#wrappedMessage[i].height;
-            ctx.fillText(this.#wrappedMessage[i].text, x + this.#margin, ypos, this.width - this.#margin * 2);
+            ctx.fillText(this.#wrappedMessage[i].text, x + this.margin, ypos, this.width - this.margin * 2);
             if (i != this.#wrappedMessage.length - 1) ypos += C.popupDescLineSpacing;
         }
         for (var i = 0; i < this.textboxes.length; i++)
         {
-            ypos += this.#margin;
-            this.textboxes[i].renderAt(ctx, x + this.#margin, ypos, this.width - this.#margin * 2, C.popupTextboxHeight);
+            ypos += this.margin;
+            this.textboxes[i].renderAt(ctx, x + this.margin, ypos, this.width - this.margin * 2, C.popupTextboxHeight);
             ypos += C.popupTextboxHeight;
         }
         for (var i = 0; i < this.widgets.length; i++)
         {
             ypos += this.margin;
-            this.widgets[i].renderAt(ctx, x + this.#margin, ypos, this.width - this.#margin * 2, this.widgets[i].defaultHeight);
+            this.widgets[i].renderAt(ctx, x + this.margin, ypos, this.width - this.margin * 2, this.widgets[i].defaultHeight);
             ypos += this.widgets[i].defaultHeight;
         }
-        ypos += this.#margin;
+        ypos += this.margin;
         if (this.buttons.length == 0) return;
-        var xpos = x + this.#margin;
+        var xpos = x + this.margin;
         for (var i = 0; i < this.buttons.length; i++)
         {
             this.buttons[i].renderAt(ctx, xpos, ypos, this.#buttonWidth, C.popupButtonHeight);
-            xpos += this.#margin + this.#buttonWidth;
+            xpos += this.margin + this.#buttonWidth;
         }
     }
     #onClose()
@@ -375,7 +376,7 @@ export class Popup
     {
         for (var i = 0; i < this.buttons.length; i++)
         {
-            if (this.buttons[i].mouseInside(x, y))
+            if (this.buttons[i].isMouseInside(x, y))
             {
                 Program.mouseBtn1Consumed = true;
                 this.buttons[i].onClick(this.buttons[i]);
@@ -395,7 +396,7 @@ export class Popup
         }
         for (var i = 0; i < this.textboxes.length; i++)
         {
-            if (this.textboxes[i].mouseInside(x, y))
+            if (this.textboxes[i].isMouseInside(x, y))
             {
                 Program.mouseBtn1Consumed = true;
                 this.textboxes[i].isFocused = true;
@@ -440,7 +441,7 @@ export class Popup
                 && y > this.widgets[i].posY && y < this.widgets[i].posY + this.widgets[i].height)
             {
                 Program.moveConsumed = true;
-                this.widgets[i].mouseMoved(x - this.widgets[i].posX, y - this.widgets[i].posY);
+                this.widgets[i].onMouseMoved(x - this.widgets[i].posX, y - this.widgets[i].posY);
                 return;
             } else if (this.widgets[i].type == 2)
             {
@@ -499,6 +500,11 @@ export class PopupButton
         this.shortcut = keyShortcut;
         this.onClick = onClick;
         this.#radius = new Radius(4);
+        this.mouseOver = false;
+        this.posX = 0;
+        this.posY = 0;
+        this.width = 0;
+        this.height = 0;
     }
     /**
      * @param {number} x Mouse position X
@@ -542,7 +548,7 @@ export class PopupButton
         ctx.fillStyle = "#ffffff";
         ctx.font = 'bold ' + C.popupButtonTextSize.toString() + 'px Segoe UI';
         ctx.textAlign = 'center';
-        ctx.fillText(this.text, x + w / 2, y + this.#center, w - this.#radius);
+        ctx.fillText(this.text, x + w / 2, y + this.#center, w - this.#radius.tl - this.#radius.tr);
     }
 }
 
@@ -562,8 +568,6 @@ export class PopupTextbox
     limitMode;
     /** @type {number} */
     #cursorPosition;
-    /** @type {number} */
-    #cursorTime;
     /** @type {string} */
     text;
     /** @type {number} */
@@ -582,6 +586,27 @@ export class PopupTextbox
     #btm;
     /** @type {number} */
     #top;
+
+    /**
+     * @param {string} placeholderText 
+     * @param {number} limitMode 0: all text, 1: numbers only
+     * @param {string} defaultText 
+     */
+    constructor(placeholderText = "", limitMode = 0, defaultText = "")
+    {
+        this.isFocused = false;
+        this.placeholderText = placeholderText;
+        this.limitMode = limitMode;
+        this.text = defaultText;
+        this.#cursorPosition = 0;
+        this.posX = 0;
+        this.posY = 0;
+        this.width = 0;
+        this.height = 0;
+        this.#blinkProgress = 0;
+        this.#center = 0;
+    }
+
     /**
      * @param {number} x Mouse position X
      * @param {number} y Mouse position Y
@@ -649,10 +674,10 @@ export class PopupTextbox
             if (this.#blinkProgress > C.blinkTime || isNaN(this.#blinkProgress)) this.#blinkProgress = 0;
             if (this.#blinkProgress > C.blinkTime / 2)
             {
-                var txtWidth = ctx.measureText(this.text.substring(0, this.cursorPosition));
+                var txtWidth = ctx.measureText(this.text.substring(0, this.#cursorPosition));
                 ctx.beginPath();
-                ctx.moveTo(x + this.owner.margin / 2 + txtWidth.width + 1, y + this.center - this.top - 1);
-                ctx.lineTo(x + this.owner.margin / 2 + txtWidth.width + 1, y + this.center + this.btm + 1);
+                ctx.moveTo(x + this.owner.margin / 2 + txtWidth.width + 1, y + this.center - this.#top - 1);
+                ctx.lineTo(x + this.owner.margin / 2 + txtWidth.width + 1, y + this.center + this.#btm + 1);
                 ctx.strokeStyle = "#ffffff";
                 ctx.strokeWeight = 2;
                 ctx.stroke();
@@ -670,7 +695,7 @@ export class PopupTextbox
         {
             if (event.ctrlKey)
             {
-                if (this.cursorPosition === this.text.length)
+                if (this.#cursorPosition === this.text.length)
                 {
                     var i
                     for (i = this.text.length - 1; i >= 0; i--)
@@ -679,32 +704,32 @@ export class PopupTextbox
                         this.text = this.text.substring(0, i);
                     else
                         this.text = "";
-                    this.cursorPosition = i < 0 ? 0 : i;
+                    this.#cursorPosition = i < 0 ? 0 : i;
                 }
                 else
                 {
                     var i
-                    for (i = this.cursorPosition - 1; i >= 0; i--)
+                    for (i = this.#cursorPosition - 1; i >= 0; i--)
                         if (this.text[i] == " ") break;
                     if (i > 0)
-                        this.text = this.text.substring(0, i) + this.text.substring(this.cursorPosition, this.text.length);
+                        this.text = this.text.substring(0, i) + this.text.substring(this.#cursorPosition, this.text.length);
                     else
-                        this.text = this.text.substring(this.cursorPosition, this.text.length);
-                    this.cursorPosition = i < 0 ? 0 : i;
+                        this.text = this.text.substring(this.#cursorPosition, this.text.length);
+                    this.#cursorPosition = i < 0 ? 0 : i;
                 }
             }
             else
             {
-                if (this.cursorPosition === this.text.length)
+                if (this.#cursorPosition === this.text.length)
                 {
                     this.text = this.text.substring(0, this.text.length - 1);
                 }
                 else
                 {
-                    this.text = this.text.substring(0, this.cursorPosition - 1) + this.text.substring(this.cursorPosition, this.text.length);
+                    this.text = this.text.substring(0, this.#cursorPosition - 1) + this.text.substring(this.#cursorPosition, this.text.length);
                 }
-                if (this.cursorPosition > 0)
-                    this.cursorPosition--;
+                if (this.#cursorPosition > 0)
+                    this.#cursorPosition--;
             }
         }
         else if (event.keyCode === 65 && event.ctrlKey)
@@ -717,22 +742,22 @@ export class PopupTextbox
         // a-z, _, ' ', 0-9
         else if ((this.limitMode == 1 && event.keyCode >= 48 && event.keyCode <= 57) || (this.limitMode != 1 && ((event.keyCode >= 65 && event.keyCode <= 90) || event.keyCode === 173 || event.keyCode === 32 || (event.keyCode >= 48 && event.keyCode <= 57) || event.keyCode == 190 || event.keyCode == 188)))
         {
-            if (this.cursorPosition === this.text.length || this.text.length == 0)
+            if (this.#cursorPosition === this.text.length || this.text.length == 0)
                 this.text += event.key;
             else if (this.cursorPosition === 0)
                 this.text = event.key + this.text;
             else
-                this.text = this.text.substring(0, this.cursorPosition) + event.key + this.text.substring(this.cursorPosition, this.text.length);
-            this.cursorPosition++;
+                this.text = this.text.substring(0, this.#cursorPosition) + event.key + this.text.substring(this.#cursorPosition, this.text.length);
+            this.#cursorPosition++;
         } else if (event.keyCode === 37) // <-
         {
-            if (this.cursorPosition > 0)
-                this.cursorPosition--;
+            if (this.#cursorPosition > 0)
+                this.#cursorPosition--;
         }
         else if (event.keyCode === 39) // ->
         {
-            if (this.cursorPosition < this.text.length)
-                this.cursorPosition++;
+            if (this.#cursorPosition < this.text.length)
+                this.#cursorPosition++;
         }
     }
 }
@@ -858,6 +883,7 @@ export class DualSelectWidget extends PopupWidget
         this.#radius = 4;
         this.#leftButtonRadius = new Radius(this.#radius, 0, this.#radius, 0);
         this.#rightButtonRadius = new Radius(0, this.#radius, 0, this.#radius);
+        this.defaultHeight = 60;
     }
     /**
      * Reset to default position
