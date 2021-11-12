@@ -33,7 +33,6 @@ export class Pages
      */
     updateScale()
     {
-        console.log(this);
         if (this.pages.length === 0) return;
         if (this.pages.length === 1)
         {
@@ -42,7 +41,6 @@ export class Pages
             this.pages[0].column = 0;
             this.pages[0].row = 0;
             this.pages[0].columnX = this.pages[0].gridSizeX;
-            console.log(this.pages[0]);
             return;
         }
         let canvHeight = Program.canvas.height;
@@ -56,7 +54,7 @@ export class Pages
         for (var i = 0; i < this.pages.length; i++)
         {
             var height = this.pages[i].pageSizeY;
-            var width = this.pages[i].gridSizeX;
+            var width = this.pages[i].titleWidth ? Math.max(this.pages[i].gridSizeX, this.pages[i].titleWidth) : this.pages[i].gridSizeX;
             if (height + total > canvHeight)
             {
                 total = height + C.heightMarginBetweenPages;
@@ -227,6 +225,7 @@ export class Pages
             else
             {
                 this.pages[i].items.splice(0);
+                this.pages[i].cells[0][0].occupied = false;
             }
         }
         for (var i = 0; i < kitdata.Kit.Clothes.length; i++)
@@ -899,6 +898,8 @@ export class ContainerPage extends Page
     titleRadius;
     /** @type {number} */
     slotOwner;
+    /** @type {number} */
+    titleWidth;
     
     /**
      * @param {number} type
@@ -923,6 +924,8 @@ export class ContainerPage extends Page
                 this.cells[x].push(new InventoryCell(this.page, x, y));
             }
         }
+        this.titleWidth = 0;
+        this.updateDims();
     }
     /**
      * Renders the background of the page (cells). Items will be rendered later.
@@ -1033,7 +1036,9 @@ export class ContainerPage extends Page
         this.gridSizeY = this.sizeY * (this.tileSizeY + C.margin);
         this.gridStartY = this.posY + C.titleToGridDistance + C.titleSize;
         this.pageSizeY = this.gridSizeY + C.titleToGridDistance + C.titleSize;
-        this.textYOffset = TextMeasurement.height(Program.context, this.title, C.pageTitleFontSize);
+        var txt = new TextMeasurement(Program.context, this.title, C.pageTitleFontSize);
+        this.textYOffset = txt.height;
+        this.titleWidth = txt.width;
     }
     /**
      * Modify various transform values of the page and update all variables accordingly.
@@ -1152,7 +1157,10 @@ export class ContainerPage extends Page
     {
         if (this.title === title) return;
         this.title = title;
-        this.textYOffset = TextMeasurement.height(ctx, this.title, C.pageTitleFontSize);
+        let txt = new TextMeasurement(ctx, this.title, C.pageTitleFontSize);
+        this.textYOffset = txt.height;
+        this.titleWidth = txt.width;
+        Program.pages.updateScale();
         Program.invalidate();
     }
 }
@@ -1945,6 +1953,8 @@ export class Item
      */
     onClick(x, y)
     {
+        console.log("Clicked: ");
+        console.log(this);
         if (this.isPicked)
         {
             /** @type {Cell} */
@@ -1985,12 +1995,13 @@ export class Item
         {
             if (Program.pages.pickedItem != null)
             {
+                console.log("Item already picked");
                 return;
             }
             else
             {
                 /** @type {Cell} */
-                var cell = Program.pages.pages[this.page].cell(this.page, this.x, this.y);
+                var cell = Program.pages.pages[this.page].cell(this.x, this.y);
                 if (!cell) return;
                 this.#pickedLocationX = x;
                 this.#pickedLocationY = y;
@@ -2014,8 +2025,8 @@ export class Item
                 }
                 else
                 {
-                    this.#pickedOffsetX = cell.posX - x;// + (this.tileSizeX / 3.0) * ((this.sizeX - 1.0) / 3);
-                    this.#pickedOffsetY = cell.posY - y;// + (this.tileSizeY / 3.0) * ((this.sizeY - 1.0) / 3);
+                    this.#pickedOffsetX = cell.posX - x + (this.tileSizeX / 3.0) * ((this.sizeX - 1.0) / 3);
+                    this.#pickedOffsetY = cell.posY - y + (this.tileSizeY / 3.0) * ((this.sizeY - 1.0) / 3);
                 }
                 Program.mouseBtn1Consumed = true;
                 Program.pages.pickedItem = this;
@@ -2052,5 +2063,18 @@ export class Item
     {
         var bounds = this.getBounds();
         return x > bounds.x && x < bounds.x + bounds.width && y > bounds.y && y < bounds.y + bounds.height ? bounds : false;
+    }
+    /**
+     * Change the pick offset.
+     * @param {number} x 
+     * @param {number} y 
+     * @param {boolean} isRelative False sets the values, true adds to them
+     */
+    offsetPick(x, y, isRelative = false)
+    {
+        if (x)
+            this.#pickedOffsetX = isRelative ? this.#pickedOffsetX + x : x;
+        if (y)
+            this.#pickedOffsetY = isRelative ? this.#pickedOffsetY + y : y;
     }
 }

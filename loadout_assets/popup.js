@@ -878,6 +878,7 @@ export class DualSelectWidget extends PopupWidget
     constructor(leftText, rightText)
     {
         super();
+        this.type = 2;
         this.leftText = leftText;
         this.rightText = rightText;
         this.#radius = 4;

@@ -55,7 +55,6 @@ export class WrappedLine
         if (words.length === 1) 
         {
             size = ctx.measureText(text);
-            console.log(words);
             var canUseAdvHeight = size.actualBoundingBoxAscent && size.actualBoundingBoxDescent;
             return new WrappedLine(text, canUseAdvHeight ? size.actualBoundingBoxAscent + size.actualBoundingBoxDescent : lineHeightDefault);
         }
@@ -228,6 +227,35 @@ export class TextMeasurement
         var ms = ctx.measureText(text);
         return ms.width;
     }
+    static truncateWords(ctx, text, maxWidth)
+    {
+
+    }
+    /**
+     * Truncate a string without splitting by words.
+     * @param {CanvasRenderingContext2D} ctx 
+     * @param {string} text Should be more than 1 letter long.
+     * @param {number} maxWidth 
+     * @returns {string} Truncated string
+     */
+    static truncateLetters(ctx, text, maxWidth, ending = "...")
+    {
+        if (text.length < 2) return text;
+        var width = ctx.measureText(text).width;
+        if (width <= maxWidth) return text;
+        var endwidth = !ending || ending.length === 0 ? 0 : ctx.measureText(ending).width;
+        for (var i = text.length - 1; i >= 0; i--)
+        {
+            if (i > 0 && text[i - 1] === " ") i--;
+            let str = text.substring(0, i);
+            width = ctx.measureText(str).width;
+            if (width + endwidth < maxWidth)
+            {
+                return !ending || ending.length === 0 ? str : str + ending; 
+            }
+        }
+        return ending ?? "";
+    }
 }
 
 export class NotImplementedException extends Error
@@ -273,14 +301,7 @@ export function onImageLoad()
  */
 export function getScale(outerX, outerY, innerX, innerY)
 {
-    if (innerX > innerY)
-    {
-        return Math.max(outerX, outerY) / innerX;
-    }
-    else
-    {
-        return Math.min(outerX, outerY) / innerY;
-    }
+    return Math.min(outerX / innerX, outerY / innerY);
 }
 
 /**
