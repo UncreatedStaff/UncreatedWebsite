@@ -928,4 +928,19 @@ export class DualSelectWidget extends PopupWidget
         ctx.fillText(this.leftText, x + this.width / 4, y + this.height / 2 + this.#ltm.height / 2, this.width / 2);
         ctx.fillText(this.rightText, x + this.width * 3 / 4, y + this.height / 2 + this.#rtm.height / 2, this.width / 2);
      }
+     onMouseMoved(x, y)
+     {
+         if (x < this.width / 2)
+             this.hovered = 1;
+         else
+             this.hovered = 2;
+         Program.invalidate();
+     }
+     onClick(x, y)  
+     {
+         if (x < this.width / 2)
+             this.selected = this.selected == 1 ? 0 : 1;
+         else
+             this.selected = this.selected == 2 ? 0 : 2;
+     }
 }

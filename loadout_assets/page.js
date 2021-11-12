@@ -121,7 +121,7 @@ export class Pages
         {
             this.pages[i].renderForeground(ctx);
         }
-        if (this.pickedItem != null && this.pickedItem.isOrphan)
+        if (this.pickedItem != null)
         {
             this.pickedItem.render(ctx);
         }
@@ -797,7 +797,8 @@ export class Page
     {
         for (var i = 0; i < this.items.length; i++)
         {
-            this.items[i].render(ctx);
+            if (!this.items[i].isPicked)
+                this.items[i].render(ctx);
         }
     }
 
@@ -1638,7 +1639,7 @@ export class Item
             let bottomX = this.x + this.sizes.width;
             let bottomY = this.y + this.sizes.height;
             let page = Program.pages.pages[this.page];
-            if (page.checkCoords(this.x, this.y) && page.checkCoords(bottomX, bottomY))
+            if (page.checkCoords(this.x, this.y) && page.checkCoords(bottomX - 1, bottomY - 1))
             {
                 for (var x = this.x; x < bottomX; x++)
                 {
@@ -1664,7 +1665,7 @@ export class Item
             let bottomX = this.x + this.sizes.width;
             let bottomY = this.y + this.sizes.height;
             let page = Program.pages.pages[this.page];
-            if (page.checkCoords(this.x, this.y) && page.checkCoords(bottomX, bottomY))
+            if (page.checkCoords(this.x, this.y) && page.checkCoords(bottomX - 1, bottomY - 1))
             {
                 for (var x = this.x; x < bottomX; x++)
                 {

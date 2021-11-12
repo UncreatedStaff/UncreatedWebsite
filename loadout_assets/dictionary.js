@@ -411,7 +411,7 @@ export class Dictionary
         }
         if (filterChange)
         {
-            this.currentPage = 0;
+            this.#currentPage = 0;
             this.updateFilters();
         }
         else
@@ -511,6 +511,13 @@ export class Dictionary
                 this.entries[e].itemData = this.#activeItems[i];
                 this.entries[e].icon = null;
                 this.entries[e].dontRequestImage = false;
+                if (this.entries[e].isHovered)
+                {
+                    this.entries[e].isHovered = false;
+                    this.entries[e].onHover();
+                    this.entries[e].isHovered = true;
+                    Program.invalidateNext(0.1);
+                }
                 this.entries[e].updateDims();
             }
             else
