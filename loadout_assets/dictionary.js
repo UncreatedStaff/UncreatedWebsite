@@ -1,5 +1,5 @@
-import { Program, blacklistedItems } from "./editor.js";
 import { Radius, CenteredTextData, TextMeasurement, roundedRectPath, getScale, roundedRect, roundedArrow, onImageLoad } from "./util.js";
+import { Program, blacklistedItems, DEFAULT_FILTER } from "./editor.js";
 import { Item } from "./page.js";
 import * as C from "./const.js";
 
@@ -95,8 +95,7 @@ export class Dictionary
         this.#activeItems = [];
         this.entries = [];
         this.activeFilters = [];
-        this.persistantFilter = new Filter("DEFAULT", (i) =>
-            i.T !== 28 && i.T !== 35 && i.LocalizedName !== "#NAME" && !blacklistedItems.includes(i.ItemID) && (isNaN(Number(i.LocalizedName)) || !isNaN(Number(i.Name))) && (i.T != 1 || !i.IsTurret));
+        this.persistantFilter = DEFAULT_FILTER;
         this.filters = [
             new Filter("Weapon", (i) => (i.T === 1 || i.T === 3 || i.T === 40) && i.ItemID > 30000),
             new Filter("Explosive", (i) => (i.T === 3 && i.Explosive) || i.T === 18 || (i.T === 8 && i.Explosive) || i.T === 31),
@@ -646,7 +645,7 @@ export class DictionaryEntry
             this.icon = new Image(this.itemData.sizeX * 512, this.itemData.sizeY * 512);
             this.icon.id = this.itemID.toString();
             this.icon.onload = onImageLoad;
-            this.icon.src = C.itemIconPrefix + this.itemID.toString() + ".png";
+            this.icon.src = C.itemIconPrefix + this.itemID.toString() + (Program.webp ? ".webp" : ".png");
             Program.pages.iconCache.set(this.itemID, this.icon);
         }
     }

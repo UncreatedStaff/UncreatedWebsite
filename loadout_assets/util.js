@@ -1,5 +1,3 @@
-import { Program } from "./editor.js";
-
 export class Radius 
 {
     /** @type {number} */
@@ -25,6 +23,10 @@ export class Radius
         this.br = br !== null  ? br : tl;
     }
 }
+
+
+import { Program } from "./editor.js";
+
 export class WrappedLine 
 {
     /** @type {string} */
@@ -363,4 +365,24 @@ export function roundedArrow(ctx, x = 0, y = 0, width = 128, height = 128, radiu
         ctx.fill();
     if (stroke)
         ctx.stroke();
+}
+
+/**
+ * https://stackoverflow.com/questions/5573096/detecting-webp-support
+ * @returns {boolean}
+ */
+export function supportsWebp()
+{
+ var elem = document.createElement('canvas');
+
+ if (!!(elem.getContext && elem.getContext('2d')))
+ {
+  // was able or not to get WebP representation
+  return elem.toDataURL('image/webp').indexOf('data:image/webp') == 0;
+ }
+ else
+ {
+  // very old browser like IE 8, canvas not supported
+  return false;
+ }
 }

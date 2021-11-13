@@ -914,33 +914,33 @@ export class DualSelectWidget extends PopupWidget
      * @param {number} w Width
      * @param {number} h Height
      */
-     renderAt (ctx, x, y, w, h)
-     {
-        super.renderAt(ctx, x, y, w, h);
-        ctx.fillStyle = this.selected == 1 ? C.popupAccent3 : (this.hovered == 1 ? C.popupAccent4 : C.popupAccent2);
-        ctx.strokeStyle = C.popupBackground;
-        roundedRect(ctx, x, y, this.width / 2, this.height, this.#leftButtonRadius, true, true);
-        ctx.fillStyle = this.selected == 2 ? C.popupAccent3 : (this.hovered == 2 ? C.popupAccent4 : C.popupAccent2);
-        roundedRect(ctx, x + this.width / 2, y, this.width / 2, this.height, this.#rightButtonRadius, true, true);
-        ctx.fillStyle = "#ffffff";
-        ctx.font = 'bold ' + C.popupButtonTextSize.toString() + 'px Segoe UI';
-        ctx.textAlign = 'center';
-        ctx.fillText(this.leftText, x + this.width / 4, y + this.height / 2 + this.#ltm.height / 2, this.width / 2);
-        ctx.fillText(this.rightText, x + this.width * 3 / 4, y + this.height / 2 + this.#rtm.height / 2, this.width / 2);
-     }
-     onMouseMoved(x, y)
-     {
-         if (x < this.width / 2)
-             this.hovered = 1;
-         else
-             this.hovered = 2;
-         Program.invalidate();
-     }
-     onClick(x, y)  
-     {
-         if (x < this.width / 2)
-             this.selected = this.selected == 1 ? 0 : 1;
-         else
-             this.selected = this.selected == 2 ? 0 : 2;
-     }
+    renderAt (ctx, x, y, w, h)
+    {
+    super.renderAt(ctx, x, y, w, h);
+    ctx.fillStyle = this.selected == 1 ? C.popupAccent3 : (this.hovered == 1 ? C.popupAccent4 : C.popupAccent2);
+    ctx.strokeStyle = C.popupBackground;
+    roundedRect(ctx, x, y, this.width / 2, this.height, this.#leftButtonRadius, true, true);
+    ctx.fillStyle = this.selected == 2 ? C.popupAccent3 : (this.hovered == 2 ? C.popupAccent4 : C.popupAccent2);
+    roundedRect(ctx, x + this.width / 2, y, this.width / 2, this.height, this.#rightButtonRadius, true, true);
+    ctx.fillStyle = "#ffffff";
+    ctx.font = 'bold ' + C.popupButtonTextSize.toString() + 'px Segoe UI';
+    ctx.textAlign = 'center';
+    ctx.fillText(this.leftText, x + this.width / 4, y + this.height / 2 + this.#ltm.height / 2, this.width / 2);
+    ctx.fillText(this.rightText, x + this.width * 3 / 4, y + this.height / 2 + this.#rtm.height / 2, this.width / 2);
+    }
+    onMouseMoved(x, y)
+    {
+        if (x < this.width / 2)
+            this.hovered = 1;
+        else
+            this.hovered = 2;
+        Program.invalidate();
+    }
+    onClick(x, y)  
+    {
+        if (x < this.width / 2)
+            this.selected = this.selected == 1 ? 0 : 1;
+        else
+            this.selected = this.selected == 2 ? 0 : 2;
+    }
 }

@@ -1,5 +1,5 @@
-import { PAGES, Program, PAGEORDER } from "./editor.js";
 import { NotImplementedException, Radius, TextMeasurement, roundedRectPath, onImageLoad, getScale, roundedRect } from "./util.js";
+import { PAGES, Program, PAGEORDER } from "./editor.js";
 import * as C from "./const.js";
 
 export class Pages
@@ -168,6 +168,31 @@ export class Pages
      * @param {number} x Mouse Position X
      * @param {number} y Mouse Position Y
      */
+    onRightClick(x, y)
+    {
+        if (this.pickedItem) return;
+        for (var i = 0; i < this.pages.length; i++)
+        {
+            /** @type {Cell} */
+            let cell = this.pages[i].getCellFromPosition(x, y, false);
+            if (cell)
+            {
+                for (var j = 0; j < this.pages[i].items.length; j++)
+                {
+                    var item = this.pages[i].items[j];
+                    if (!item.isPicked && cell.coordX >= item.x && cell.coordY >= item.y && cell.coordX < item.x + item.sizes.width && cell.coordY < item.y + item.sizes.height)
+                    {
+                        Program.savedContextMenus[0].open(x, y, item, item.item.LocalizedName);
+                        return;
+                    }
+                }
+            }
+        }
+    }
+    /**
+     * @param {number} x Mouse Position X
+     * @param {number} y Mouse Position Y
+     */
     onMouseMoved(x, y)
     {
         if (this.pickedItem)
@@ -185,6 +210,7 @@ export class Pages
             {
                 if (this.pages[i].items[t].onMouseMoved(x, y)) break;
             }
+            /** @type {Cell} */
             let cell = this.pages[i].getCellFromPosition(x, y);
             if (cell)
             {
@@ -287,7 +313,7 @@ export class Pages
                             {
                                 var newpage = this.addContainer(newPageID, data.Width, data.Height, data.LocalizedName, C.tileSize, true, null);
                                 newpage.slotOwner = pageID;
-                                this.pages[p].pageChild = newPageID;
+                                this.pages[p].child = newPageID;
                             }
                             break slotSearch;
                         }
@@ -396,7 +422,7 @@ export class Pages
                     {
                         var newpage = this.addContainer(newPageID, item.item.Width, item.item.Height, item.item.LocalizedName, true, null);
                         newpage.slotOwner = pg.pageID;
-                        pg.pageChild = newPageID;
+                        pg.child = newPageID;
                         this.sortPages();
                         this.updateScale();
                     }
@@ -448,7 +474,7 @@ export class Pages
                     {
                         var newpage = this.addContainer(newPageID, item.item.Width, item.item.Height, item.item.LocalizedName, true, null);
                         newpage.slotOwner = pg.pageID;
-                        pg.pageChild = newPageID;
+                        pg.child = newPageID;
                         this.sortPages();
                         this.updateScale();
                     }
@@ -468,15 +494,15 @@ export class Pages
                     item.pendingSizes = item.sizes;
                     item.page = page;
                     pg.items.push(item);
-                    if (oldpg.type === 1 && oldpg.pageChild && oldpg.pageChild != pg.pageID)
+                    if (oldpg.type === 1 && oldpg.child && oldpg.child != pg.pageID)
                     {
                         for (var i = 0; i < this.pages.length; i++)
                         {
-                            if (this.pages[i].pageID === oldpg.pageChild)
+                            if (this.pages[i].pageID === oldpg.child)
                             {
                                 if (page > i) page--;
                                 this.pages.splice(i, 1);
-                                oldpg.pageChild = null;
+                                oldpg.child = null;
                                 this.updateScale();
                                 this.sortPages();
                                 break;
@@ -941,7 +967,7 @@ export class ContainerPage extends Page
         ctx.textAlign = 'center';
         ctx.fillStyle = '#ffffff';
         ctx.font = 'bold ' + C.pageTitleFontSize.toString() + 'px Segoe UI';
-        ctx.fillText(this.title, this.posX + this.columnX / 2, this.posY + this.textYOffset + C.titleSize / 2, this.size);
+        ctx.fillText(this.title, this.posX + this.columnX / 2, this.posY + (C.titleSize - 2 * this.textYOffset), this.size);
         for (var x = 0; x < this.sizeX; x++)
         {
             if (!this.cells[x]) continue;
@@ -1038,7 +1064,7 @@ export class ContainerPage extends Page
         this.gridStartY = this.posY + C.titleToGridDistance + C.titleSize;
         this.pageSizeY = this.gridSizeY + C.titleToGridDistance + C.titleSize;
         var txt = new TextMeasurement(Program.context, this.title, C.pageTitleFontSize);
-        this.textYOffset = txt.height;
+        this.textYOffset = txt.up;
         this.titleWidth = txt.width;
     }
     /**
@@ -1690,7 +1716,7 @@ export class Item
             this.#icon = new Image(this.sizeX * 512, this.sizeY * 512);
             this.#icon.id = this.id.toString();
             this.#icon.onload = onImageLoad;
-            this.#icon.src = C.itemIconPrefix + this.id.toString() + ".png";
+            this.#icon.src = C.itemIconPrefix + this.id.toString() + (Program.webp ? ".webp" : ".png");
             Program.pages.iconCache.set(this.id, this.#icon);
         }
     }

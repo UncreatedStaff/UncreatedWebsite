@@ -1,9 +1,10 @@
 ﻿import * as C from "./const.js";
+import { Radius, WrappedLine, CenteredTextData, roundedRect, roundedRectPath, TextMeasurement, onImageLoad, getScale, asciiToUint8Array, supportsWebp } from "./util.js";
 import { Popup, PopupButton, PopupTextbox, DualSelectWidget, PopupWidget } from "./popup.js";
-import { Radius, WrappedLine, CenteredTextData, roundedRect, roundedRectPath, TextMeasurement, onImageLoad, getScale, asciiToUint8Array } from "./util.js";
 import { Page, SlotPage, ContainerPage, SlotCell, InventoryCell, Item, Pages } from "./page.js";
-import { Dictionary } from "./dictionary.js";
+import { Dictionary, Filter } from "./dictionary.js";
 import { Wiki } from "./wiki.js";
+import { ContextMenu, ContextButton } from "./contextmenu.js";
 import '../packages/jQuery.3.6.0/Content/Scripts/jquery-3.6.0.js';
 
 /*jshint esversion: 6 */
@@ -28,7 +29,8 @@ export const PAGES = Object.freeze({
 // order to sort pages when calling Pages.sortPages();
 export const PAGEORDER = [PAGES.HANDS, PAGES.BACKPACK, PAGES.VEST, PAGES.SHIRT, PAGES.PANTS, PAGES.PRIMARY, PAGES.SECONDARY,
 PAGES.C_BACKPACK, PAGES.C_VEST, PAGES.C_SHIRT, PAGES.C_PANTS, PAGES.C_HAT, PAGES.C_MASK, PAGES.C_GLASSES];
-export const blacklistedItems = [1522];
+export const blacklistedItems = [1522, 33301, 33300, 36058, 36059, 38311, 38351, 38353, 38355, 38357, 38359, 38361, 38363, 33302, 38317, 38319, 38343, 38344, 38404, 20002, ];
+export var DEFAULT_FILTER;
 document.body.onload = startEditor;
 /**
  * @typedef {Object} StartupData
@@ -48,6 +50,7 @@ document.body.onload = startEditor;
  * @property {number} SlotType ESlotType
  * @property {number} Amount Max ammo count
  * @property {boolean} SentryAggressive Will sentries shoot holder
+ * @property {Uint8Array} DefaultState Default state of the item
  * 
  * @typedef {Object} KitData
  * @property {Kit} Kit
@@ -92,10 +95,16 @@ function startEditor()
 }
 export class PGRM
 {
+    /** @type {boolean} */
+    webp = true
     /** @type {HTMLCanvasElement} **/
     canvas = null;
     /** @type {CanvasRenderingContext2D} **/
     context = null;
+    /** @type {ContextMenu} **/
+    contextMenu = null;
+    /** @type {ContextMenu[]} **/
+    savedContextMenus = null;
     /** @type {HTMLElement} **/
     header = null;
     /** @type {Wiki} **/
@@ -150,6 +159,7 @@ export class PGRM
         document.oncontextmenu = contextOverride;
         document.onmouseout = mouseLeave;
         window.onresize = resizeInt;
+        this.webp = supportsWebp();
         this.canvas = document.createElement("canvas");
         this.header = document.getElementById("headerObj");
         this.footer = document.getElementById("footerObj");
@@ -182,7 +192,23 @@ export class PGRM
                     [new TruncateTestWidget()]
                 )
             ];
-        
+        DEFAULT_FILTER = new Filter("DEFAULT", (i) =>
+            i.T !== 28 && 
+            i.T !== 35 && 
+            i.LocalizedName !== "#NAME" && 
+            !blacklistedItems.includes(i.ItemID) && 
+            (isNaN(Number(i.LocalizedName)) || !isNaN(Number(i.Name))) && 
+            (i.T != 1 || !i.IsTurret) &&
+            (!i.Name.includes("Kiosk"))
+            );
+        this.savedContextMenus =
+        [
+            new ContextMenu("Item",
+            [
+                new ContextButton("Delete", disposeItem),
+                new ContextButton("Edit Attachment", editAttachments, (owner) => owner.parent && owner.parent.item && owner.parent.item.T === 1)
+            ])
+        ];
         this.pages = new Pages(25, 25);
         this.pages.addSlot(PAGES.PRIMARY, "Primary", 6, 4, true, "primary.svg", (item) => item.item.SlotType == 1 || item.item.SlotType == 2 || item.item.SlotType == 4);
         this.pages.addSlot(PAGES.SECONDARY, "Secondary", 6, 4, true, "secondary.svg", (item) => item.item.SlotType == 2 || item.item.SlotType == 4);
@@ -233,6 +259,10 @@ export class PGRM
                             {
                                 Program.DATA.items.splice(i, 1);
                                 i--;
+                            }
+                            else
+                            {
+                                Program.DATA.items[i].DefaultState = asciiToUint8Array(Program.DATA.items[i].DefaultState);
                             }
                         }
                         this.onMouseMoved(-127, -127);
@@ -310,7 +340,9 @@ export class PGRM
     {
         if (this.isLoading) return;
         this.mouseBtn1Consumed = false;
-        if (Program.popup != null && Program.popup.consumeKeys && Program.popup.isOpen)
+        if (this.contextMenu && this.contextMenu.isOpen)
+            this.contextMenu.onClick(x, y);
+        if (!this.mouseBtn1Consumed && Program.popup != null && Program.popup.consumeKeys && Program.popup.isOpen)
         {
             Program.popup.onClick(x, y);
             this.mouseBtn1Consumed = true;
@@ -340,6 +372,8 @@ export class PGRM
         this.mouseIsOutside = false;
         if (this.isLoading) return;
         this.moveConsumed = false;
+        if (this.contextMenu && this.contextMenu.isOpen)
+            this.contextMenu.onMouseMove(x, y);
         if (Program.popup != null && Program.popup.consumeKeys)
             Program.popup.onMouseMoved(x, y);
         else if (this.pages)
@@ -363,13 +397,16 @@ export class PGRM
         if (event.clientX < this.bounds.left || event.clientX > this.bounds.right || event.clientY < this.bounds.top || event.clientY > this.bounds.bottom) return;
         var x = event.clientX - this.bounds.left;
         var y = event.clientY - this.bounds.top;
-        console.log(Program);
-        //if (this.pages)
-        //    this.pages.onRightClick(x, y);
+        if (this.pages)
+            this.pages.onRightClick(x, y);
         if (this.mouseBtn2Consumed)
         {
             event.stopPropagation();
             event.preventDefault();
+        }
+        else if (this.contextMenu)
+        {
+            this.contextMenu.close();
         }
     }
     /**
@@ -553,6 +590,10 @@ function tick(ctx, deltaTime, realtime, ticks, canvas)
         if (Program.wiki)
             loop |= Program.wiki.render(ctx, deltaTime, realtime);
     }
+    if (Program.contextMenu && Program.contextMenu.isOpen)
+    {
+        Program.contextMenu.render(ctx);
+    }
     ctx.textAlign = 'right';
     ctx.fillStyle = '#ffffff';
     ctx.font = '10px Consolas';
@@ -605,98 +646,12 @@ function editAttachments(btn)
  */
 function disposeItem(btn)
 {
-    if (btn.owner && btn.owner.item)
+    if (btn.owner && btn.owner.parent && btn.owner.parent.dispose)
     {
-        btn.owner.item.delete();
+        btn.owner.parent.dispose();
         return true;
     }
     else return false;
-}
-function ContextMenu(title = "TITLE", buttons = [])
-{
-    this.title = title;
-    this.buttons = buttons;
-    for (var i = 0; i < this.buttons.length; i++)
-        this.buttons[i].owner = this;
-    this.posX = 0;
-    this.posY = 0;
-    this.width = 0;
-    this.height = 0;
-    this.margin = 4;
-    this.radiusTop = new Radius(4, 4, 0, 0);
-    this.radiusBottom = new Radius(0, 0, 4, 4);
-    this.up = false;
-    this.left = false;
-    this.titleHeight = 0;
-    this.updateDims = function (ctx, x, y)
-    {
-        this.posX = x;
-        this.posY = y;
-        ctx.font = C.ctxMenuFontSize.toString() + "px Segoe UI";
-        this.width = this.margin;
-        var measure;
-        var highest = 0;
-        this.height = 0;
-        if (this.title.length > 0)
-        {
-            this.height = this.title.length > 0 ? C.ctxMenuHeaderSize : 0;
-            measure = new TextMeasurement(ctx, this.title, C.ctxMenuFontSize);
-            highest = measure.width;
-            this.titleHeight = measure.up;
-        }
-        if (highest < C.ctxMinWidth) highest = C.ctxMinWidth;
-        for (var i = 0; i < this.buttons.length; i++)
-        {
-            this.height += this.buttons[i].height;
-            if (this.buttons[i].text)
-            {
-                measure = new TextMeasurement(ctx, this.buttons[i].text, C.ctxMenuFontSize);
-                this.buttons[i].textHeight = measure.up;
-                if (highest < measure.width)
-                    highest = measure.width;
-            }
-        }
-        this.width += highest + this.margin;
-        this.up = this.posY + this.height > Program.canvas.height;
-        this.left = this.posX + this.width > Program.canvas.width;
-    }
-    this.render = function (ctx)
-    {
-        var px = this.left ? this.posX - this.width : this.posX;
-        var py = this.up ? this.posY - this.height : this.posY;
-        ctx.fillStyle = "#888888";
-        ctx.strokeStyle = "#000000";
-        ctx.font = C.ctxMenuFontSize.toString() + "px bold Segoe UI";
-        if (this.title.length > 0)
-        {
-            roundedRect(ctx, px, py, this.width, C.ctxMenuHeaderSize, this.radiusTop, true, true);
-            ctx.fillStyle = "#ffffff";
-            py += C.ctxMenuHeaderSize;
-        }
-        for (var i = 0; i < this.buttons.length; i++)
-        {
-            ctx.fillStyle = "#888888";
-            if (i == this.buttons.length - 1)
-            {
-                roundedRect(ctx, px, py, this.width, this.buttons[i].height, this.radiusBottom, true, true);
-            }
-            else
-            {
-                ctx.fillRect(px, py, this.width, this.buttons[i].height);
-                ctx.strokeRect(px, py, this.width, this.buttons[i].height);
-            }
-            ctx.fillStyle = "#ffffff";
-            ctx.fillText(this.buttons[i].text, px + this.margin, py + this.buttons[i].textHeight);
-            py += this.buttons[i].height;
-        }
-    }
-}
-function ContextButton(text = "BUTTON", callback)
-{
-    this.height = C.ctxButtonHeight;
-    this.text = text;
-    this.callback = callback;
-    this.textHeight = 0;
 }
 const validClasses = []
 /**
