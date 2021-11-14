@@ -3,6 +3,30 @@ import { PAGES, Program, PAGEORDER } from "./editor.js";
 import * as C from "./const.js";
 /** @typedef {import('./editor.js').ItemData} ItemData */
 
+const blacklistedAttachments = [ 38335, 1301, 354, 350 ];
+
+const lockedItems = [ 
+    {
+        id: 355,
+        locked: [ "barrel" ]
+    },
+    {
+        id: 353,
+        locked: [ "barrel" ]
+    },
+    {
+        id: 356,
+        locked: [ "barrel" ]
+    },
+    {
+        id: 357,
+        locked: [ "barrel" ]
+    },
+    {
+        id: 346,
+        locked: [ "barrel" ]
+    }
+];
 export class AttachmentEditor
 {
     /**
@@ -61,6 +85,7 @@ export class AttachmentEditor
      * @property {number} DefaultGrip
      * @property {number} DefaultBarrel
      * @property {number} DefaultMagazine
+     * @property {number} DefaultTactical
      * @property {number} UnloadStepTime
      * @property {number} ReloadStepTime
      * @property {boolean} HasSight
@@ -162,6 +187,8 @@ export class AttachmentEditor
     /** @type {number} */
     #previewPosY;
     /** @type {number} */
+    tileSize;
+    /** @type {number} */
     #cellSize;
     /** @type {MagazineData} */
     magazine;
@@ -181,12 +208,14 @@ export class AttachmentEditor
     #itemPreview;
     /** @type {boolean} */
     #dontRequestImage;
-    /** @type {ItemSlot} */
+    /** @type {ItemSlot[]} */
     #slots;
     /** @type {number} */
     #text;
     /** @type {number} */
     defaultSight;
+    /** @type {number} */
+    itemDistance;
     constructor()
     {
         this.availableSights = [];
@@ -202,6 +231,9 @@ export class AttachmentEditor
             new ItemSlot("barrel", this),
             new ItemSlot("magazine", this)
         ];
+        this.defaultSight = 0;
+        this.itemDistance = 120;
+        this.tileSize = C.tileSize;
     }
     invalidatePreview()
     {
@@ -216,25 +248,55 @@ export class AttachmentEditor
     {
         this.itemData = itemData;
         this.isOpen = itemData !== undefined;
-        var defSight = this.#bytesToNumber(itemData.DefaultState, 0);
-        this.updateAttachments(defSight);
         if (this.isOpen)
         {
-            this.setAttachmentsFromState(itemData.DefaultState);
+            for (var i = 0; i < this.#slots.length; i++)
+            {
+                this.#slots[i].locked = false;
+                switch (this.#slots[i].type)
+                {
+                    case "sight":
+                        this.#slots[i].locked = !this.itemData.HasSight;
+                        break;
+                    case "tactical":
+                        this.#slots[i].locked = !this.itemData.HasTactical;
+                        break;
+                    case "grip":
+                        this.#slots[i].locked = !this.itemData.HasGrip;
+                        break;
+                    case "barrel":
+                        this.#slots[i].locked = !this.itemData.HasBarrel;
+                        break;
+                }
+                if (!this.#slots[i].locked)
+                {
+                    this.#slots[i].middle.displayColor = C.defaultCellColor;
+                    for (var l = 0; l < lockedItems.length; l++)
+                    {
+                        if (this.itemData.ItemID === lockedItems[i].id)
+                        {
+                            if (lockedItems[l].locked.includes(this.#slots[i].type)) 
+                            {
+                                this.#slots[i].locked = true;
+                                this.#slots[i].middle.displayColor = C.lockedCellColor;
+                            }
+                            break;
+                        }
+                    }
+                }
+                else this.#slots[i].middle.displayColor = C.lockedCellColor;
+            }
+            
+            this.defaultSight = itemData.DefaultSight;
+            this.updateAttachments(this.defaultSight);
+            this.sight = this.defaultSight;
+            this.tactical = itemData.DefaultTactical;
+            this.grip = itemData.DefaultGrip;
+            this.barrel = itemData.DefaultBarrel;
+            this.magazine = itemData.DefaultMagazine;
+            this.#loadSettings();
         }
         this.updateDims();
-    }
-    /**
-     * @param {Uint8Array} state
-     */
-    setAttachmentsFromState(state)
-    {
-        this.sight = this.#bytesToNumber(state, 0);
-        this.tactical = this.#bytesToNumber(state, 2);
-        this.grip = this.#bytesToNumber(state, 4);
-        this.barrel = this.#bytesToNumber(state, 6);
-        this.magazine = this.#bytesToNumber(state, 8);
-        this.#loadSettings();
     }
     #loadSettings()
     {
@@ -242,14 +304,6 @@ export class AttachmentEditor
         {
             this.#slots[i].loadFrom();
         }
-    }
-    /**
-     * @param {Uint8Array} state
-     * @param {number} index
-     */
-    #bytesToNumber(state, index)
-    {
-        return state[index + 1] * 256 + state[index];
     }
     /**
      * @param {number} id Item ID
@@ -308,7 +362,11 @@ export class AttachmentEditor
         {
             /** @type {AttachmentData} */
             let item = Program.DATA.items[i];
-            if (item.Name.includes("Iron_Sight") && item.ItemID !== defaultSight) continue;
+            if ((item.Name.includes("Iron_Sight") && item.ItemID !== defaultSight) || 
+            (blacklistedAttachments.includes(item.ItemID) && this.itemData && 
+            ![this.itemData.DefaultSight, this.itemData.DefaultTactical, 
+                this.itemData.DefaultGrip, this.itemData.DefaultBarrel, 
+                this.itemData.DefaultMagazine].includes(item.ItemID))) continue;
             if (item.BallisticDamageMultiplier !== undefined) // is attachment data
             {
                 if (this.isValidData(item))
@@ -321,11 +379,16 @@ export class AttachmentEditor
                 }
             }
         }
-        this.#slots[0].loadItems(this.availableSights);
-        this.#slots[1].loadItems(this.availableTacticals);
-        this.#slots[2].loadItems(this.availableGrips);
-        this.#slots[3].loadItems(this.availableBarrels);
-        this.#slots[4].loadItems(this.availableMagazines);
+        if (!this.#slots[0].locked)
+            this.#slots[0].loadItems(this.availableSights);
+        if (!this.#slots[1].locked)
+            this.#slots[1].loadItems(this.availableTacticals);
+        if (!this.#slots[2].locked)
+            this.#slots[2].loadItems(this.availableGrips);
+        if (!this.#slots[3].locked)
+            this.#slots[3].loadItems(this.availableBarrels);
+        if (!this.#slots[4].locked)
+            this.#slots[4].loadItems(this.availableMagazines);
     }
 
     /** @type {string}*/
@@ -344,19 +407,20 @@ export class AttachmentEditor
     }
     updateDims()
     {
-        this.#previewSizeX = Program.canvas.width / 4;
+        if (!this.itemData) return;
+        this.tileSize = Program.canvas.width / 64;
+        this.#previewSizeX = Program.canvas.width / 6;
         this.#previewSizeY = this.#previewSizeX / this.itemData.SizeX * this.itemData.SizeY;
         this.#previewPosX = (Program.canvas.width - this.#previewSizeX) / 2;
         this.#previewPosY = (Program.canvas.height - this.#previewSizeY) / 5;
         this.#cellSize = this.#previewSizeX / this.itemData.SizeX;
         if (this.#previewPosY < 5) this.#previewPosY = 5;
-        var st = Program.canvas.width * 0.1;
-        var ct = Program.canvas.width * 0.8 / 5;
         var ht = Program.canvas.height * 2.25 / 3;
+        this.itemDistance = Program.canvas.width / (12 * C.itemDistanceMultiplier);
         for (var i = 0; i < this.#slots.length; i++)
         {
             var slot = this.#slots[i];
-            slot.posX = st + ct * i;
+            slot.posX = Program.canvas.width / 6 * (i + 1);
             slot.posY = ht;
             slot.updateDims();
         }
@@ -370,6 +434,7 @@ export class AttachmentEditor
     {
         if (!this.#itemPreview && !this.#dontRequestImage)
             this.getPreview(false);
+        Program.clearCanvas();
         if (this.itemData)
         {
             for (var x = 0; x < this.itemData.SizeX; x++)
@@ -464,6 +529,8 @@ class ItemSlot
     middle;
     /** @type {ItemIcon[]} */
     icons;
+    /** @type {boolean} */
+    locked;
     /** @type {AttachmentData[]} */
     items;
     /** @type {number} */
@@ -486,30 +553,58 @@ class ItemSlot
     {
         this.type = type;
         this.owner = owner;
-        this.middle = new ItemIcon(this);
+        this.middle = new ItemIcon(this, true);
         this.icons = [];
         this.items = [];
+        this.locked = false;
         this.middle.load(this.type);
     }
     updateDims()
     {
-        var angleDif = 2 * Math.PI / this.icons.length;
-        this.middle.posX = this.posX - this.middle.width / 2;
-        this.middle.posY = this.posY - this.middle.height / 2;
-        for (var i = 0; i < this.icons.length; i++)
+        var angleDif = 2 * Math.PI / (this.icons.length === 0 ? 1 : this.icons.length);
+        this.middle.width = 2 * this.owner.tileSize;
+        this.middle.height = 2 * this.owner.tileSize;
+        this.middle.posX = this.posX - this.owner.tileSize;
+        this.middle.posY = this.posY - this.owner.tileSize;
+        if (!this.locked)
         {
-            this.icons[i].posX = this.posX + (Math.cos(i * angleDif) * itemDistance) - this.icons[i].width / 2;
-            this.icons[i].posY = this.posY + (Math.sin(i * angleDif) * itemDistance) - this.icons[i].height / 2;
+            for (var i = 0; i < this.icons.length; i++)
+            {
+                this.icons[i].width = this.icons[i].sizeX * this.owner.tileSize;
+                this.icons[i].height = this.icons[i].sizeY * this.owner.tileSize;
+                this.icons[i].posX = this.posX + (Math.cos(ItemSlot.clampRad(Math.PI * 3 / 2 + i * angleDif)) * this.owner.itemDistance) - this.icons[i].width / 2;
+                this.icons[i].posY = this.posY + (Math.sin(ItemSlot.clampRad(Math.PI * 3 / 2 + i * angleDif)) * this.owner.itemDistance) - this.icons[i].height / 2;
+            }
         }
+    }
+    /**
+     * Clamp between 0 and 2PI
+     * @param {number} rad 
+     */
+    static clampRad(rad)
+    {
+        return rad % (2 * Math.PI);
     }
     /**
      * @param {CanvasRenderingContext2D} ctx 
      */
     render(ctx)
     {
+        if (!this.locked)
+        {
+            for (var i = 0; i < this.icons.length; i++)
+            {
+                ctx.beginPath();
+                ctx.moveTo(this.posX, this.posY);
+                ctx.lineTo(this.icons[i].posX + this.icons[i].width / 2, this.icons[i].posY + this.icons[i].height / 2);
+                ctx.strokeStyle = this.icons[i].disabled ? "#999999" : "#191919";
+                ctx.lineWidth = this.icons[i].disabled ? Program.canvas.width / 426 : 0.5;
+                ctx.stroke();
+                ctx.lineWidth = 1;
+                this.icons[i].render(ctx);
+            }
+        }
         this.middle.render(ctx);
-        for (var i = 0; i < this.icons.length; i++)
-            this.icons[i].render(ctx);
     }
     /**
      * @param {AttachmentData[]} items
@@ -518,12 +613,14 @@ class ItemSlot
     {
         this.items = items;
         this.middle.load(this.type);
-        for (var i = 0; i < this.items.length; i++)
+        if (this.locked) return;
+        var i = 0;
+        for (; i < this.items.length; i++)
         {
             var item = this.icons[i];
             if (!item)
             {
-                item = new ItemIcon(this);
+                item = new ItemIcon(this, false);
                 item.type = this.type;
             }
             item.index = i;
@@ -531,6 +628,8 @@ class ItemSlot
             item.disabled = false;
             this.icons.push(item);
         }
+        if (this.icons.length > i)
+            this.icons.splice(i);
     }
     /**
      * @param {number} x 
@@ -550,11 +649,12 @@ class ItemSlot
         }
         else if (this.middle.hovered)
         {
-            this.middle.displayColor = C.defaultCellColor;
+            this.middle.displayColor = this.locked ? C.lockedCellColor : C.defaultCellColor;;
             this.middle.hovered = false;
             Program.moveConsumed = true;
             Program.invalidate();
         }
+        if (this.locked) return;
         for (var i = 0; i < this.icons.length; i++)
         {
             var icon = this.icons[i];
@@ -570,7 +670,7 @@ class ItemSlot
             }
             else if (icon.hovered)
             {
-                icon.displayColor = C.defaultCellColor;
+                icon.displayColor = C.defaultCellColor;;
                 icon.hovered = false;
                 Program.moveConsumed = true;
                 Program.invalidate();
@@ -631,7 +731,8 @@ class ItemSlot
                         break;
                     }
                 }
-                this.middle.load(Program.DATA.items[item]);
+                this.middle.load(this.type);
+                this.middle.index = -1;
             }
         }
         else
@@ -640,19 +741,20 @@ class ItemSlot
             {
                 if (Program.DATA.items[item].ItemID === val)
                 {
-                    var index = 0;
+                    var index = -1;
                     for (; index < this.items.length; index++)
-                        if (this.items[index].ItemID === val)
+                        if (index != -1 && this.items[index].ItemID === val)
                             break;
-                    if (index === 0)
+                    if (index === -1)
                     {
                         index = this.items.length;
                         this.items.push(Program.DATA.items[item]);
-                        var icon = new ItemIcon(this);
+                        var icon = new ItemIcon(this, false);
                         icon.index = index;
                         icon.type = this.type;
                         icon.disabled = true;
                         icon.load(Program.DATA.items[item]);
+                        this.icons.push(icon);
                     }
                     else
                     {
@@ -676,6 +778,7 @@ class ItemSlot
                             }
                         }
                     }
+                    this.middle.index = index;
                     this.middle.load(Program.DATA.items[item]);
                     break;
                 }
@@ -688,11 +791,19 @@ class ItemSlot
      */
     onClick(x, y)
     {
+        if (this.locked) return;
         if (x > this.middle.posX && x < this.middle.posX + this.middle.width && y > this.middle.posY && y < this.middle.posY + this.middle.height)
         {
-            var own = this.icons[this.middle.index];
-            if (own)
-                own.disabled = false;
+            if (this.middle.index === -1) return;
+            for (var i = 0; i < this.icons.length; i++)
+            {
+                if (this.middle.index === this.icons[i].index)
+                {
+                    this.icons[i].disabled = false;
+                    break;
+                }
+            }
+            this.middle.index = -1;
             this.middle.load(this.type);
             this.#setType(undefined);
             Program.mouseBtn1Consumed = true;
@@ -703,12 +814,18 @@ class ItemSlot
             var icon = this.icons[i];
             if (x > icon.posX && x < icon.posX + icon.width && y > icon.posY && y < icon.posY + icon.height)
             {
-                var old = this.icons[this.middle.index];
-                if (old)
-                    old.disabled = false;
-                var it = this.items[icon.index] ?? this.type
+                for (var i = 0; i < this.icons.length; i++)
+                {
+                    if (this.middle.index === this.icons[i].index)
+                    {
+                        this.icons[i].disabled = false;
+                        break;
+                    }
+                }
+                var it = this.items[icon.index] ?? this.type;
+                this.middle.index = icon.index;
                 this.middle.load(it);
-                this.#setType(it);
+                this.#setType(it.ItemID);
                 icon.disabled = true;
                 Program.mouseBtn1Consumed = true;
                 return true;
@@ -753,22 +870,27 @@ class ItemIcon
     displayColor;
     /** @type {boolean} */
     hovered;
+    /** @type {boolean} */
+    useBestFit;
     /**
-     * @param {ItemSlot} owner 
+     * @param {ItemSlot} owner
+     * @param {boolean} middle
      */
-    constructor(owner)
+    constructor(owner, middle)
     {
         this.#owner = owner;
         this.sizeX = 2;
         this.sizeY = 2;
         this.posX = 0;
         this.posY = 0;
-        this.width = C.tileSize * 2;
-        this.height = C.tileSize * 2;
+        this.width = this.#owner.owner.tileSize * 2;
+        this.height = this.#owner.owner.tileSize * 2;
         this.#dontRequestImage = false;
-        this.displayColor = C.defaultCellColor;
+        this.displayColor = this.#owner.locked ? C.lockedCellColor : C.defaultCellColor;
         this.hovered = false;
         this.index = 0;
+        this.disabled = false;
+        this.useBestFit = middle;
     }
     /**
      * Request item preview
@@ -798,16 +920,22 @@ class ItemIcon
             this.#id = undefined;
             this.sizeX = 2;
             this.sizeY = 2;
-            this.width = C.tileSize * 2;
-            this.height = C.tileSize * 2;
+            if (!this.useBestFit)
+            {
+                this.width = this.#owner.owner.tileSize * 2;
+                this.height = this.#owner.owner.tileSize * 2;
+            }
             this.occupied = false;
         }
         else if (typeof itemData === 'string')
         {
             this.sizeX = 2;
             this.sizeY = 2;
-            this.width = C.tileSize * 2;
-            this.height = C.tileSize * 2;
+            if (!this.useBestFit)
+            {
+                this.width = this.#owner.owner.tileSize * 2;
+                this.height = this.#owner.owner.tileSize * 2;
+            }
             this.occupied = false;
             switch (itemData)
             {
@@ -848,8 +976,11 @@ class ItemIcon
             this.#id = itemData.ItemID;
             this.sizeX = itemData.SizeX;
             this.sizeY = itemData.SizeY;
-            this.width = C.tileSize * this.sizeX;
-            this.height = C.tileSize * this.sizeY;
+            if (!this.useBestFit)
+            {
+                this.width = this.#owner.owner.tileSize * this.sizeX;
+                this.height = this.#owner.owner.tileSize * this.sizeY;
+            }
             this.#getIcon();
             this.occupied = true;
         }
@@ -859,8 +990,11 @@ class ItemIcon
             this.#id = undefined;
             this.sizeX = 2;
             this.sizeY = 2;
-            this.width = C.tileSize * 2;
-            this.height = C.tileSize * 2;
+            if (!this.useBestFit)
+            {
+                this.width = this.#owner.owner.tileSize * 2;
+                this.height = this.#owner.owner.tileSize * 2;
+            }
             this.occupied = false;
         }
         Program.invalidate();
@@ -873,7 +1007,7 @@ class ItemIcon
     {
         if (!this.#dontRequestImage && this.#icon === null)
             this.#getIcon();
-        if (this.occupied)
+        if (this.occupied && !this.useBestFit)
         {
             this.#renderCells(ctx, this.posX, this.posY);
         }
@@ -891,9 +1025,21 @@ class ItemIcon
         {
             try
             {
+                var w = this.width;
+                var h = this.height
+                var x = this.posX;
+                var y = this.posY;
                 if (!this.occupied)
                     ctx.globalAlpha = 0.03;
-                ctx.drawImage(this.#icon, this.posX, this.posY, this.width, this.height);
+                else if (this.useBestFit)
+                {
+                    let scale = getScale(this.width, this.height, this.sizeX, this.sizeY);
+                    w = this.sizeX * scale;
+                    h = this.sizeY * scale;
+                    x += (this.width - w) / 2;
+                    y += (this.height - h) / 2;
+                }
+                ctx.drawImage(this.#icon, x, y, w, h);
                 ctx.globalAlpha = 1.0;
             }
             catch
@@ -914,9 +1060,9 @@ class ItemIcon
         {
             for (var y = 0; y < this.sizeY; y++)
             {
-                roundedRectPath(ctx, posX + x * C.tileSize, posY + y * C.tileSize, C.tileSize, C.tileSize, C.SLOT_RADIUS);
+                roundedRectPath(ctx, posX + x * this.#owner.owner.tileSize, posY + y * this.#owner.owner.tileSize, this.#owner.owner.tileSize, this.#owner.owner.tileSize, C.SLOT_RADIUS);
                 ctx.globalAlpha = 0.5;
-                ctx.fillStyle = this.occupied ? C.occupiedCellColor : this.displayColor;
+                ctx.fillStyle = this.disabled ? C.disabledCellColor : this.displayColor;
                 ctx.fill();
                 ctx.globalAlpha = 1.0;
                 ctx.strokeStyle = "#000000";

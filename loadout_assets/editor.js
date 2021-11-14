@@ -35,7 +35,7 @@ export const PAGES = Object.freeze({
 // order to sort pages when calling Pages.sortPages();
 export const PAGEORDER = [PAGES.HANDS, PAGES.BACKPACK, PAGES.VEST, PAGES.SHIRT, PAGES.PANTS, PAGES.PRIMARY, PAGES.SECONDARY,
 PAGES.C_BACKPACK, PAGES.C_VEST, PAGES.C_SHIRT, PAGES.C_PANTS, PAGES.C_HAT, PAGES.C_MASK, PAGES.C_GLASSES];
-export const blacklistedItems = [1522, 33301, 33300, 36058, 36059, 38311, 38351, 38353, 38355, 38357, 38359, 38361, 38363, 33302, 38317, 38319, 38343, 38344, 38404, 20002];
+export const blacklistedItems = [1521, 1522, 33301, 33300, 36058, 36059, 38311, 38351, 38353, 38355, 38357, 38359, 38361, 38363, 33302, 38317, 38319, 38343, 38344, 38404, 20002];
 export var DEFAULT_FILTER;
 document.body.onload = startEditor;
 /**
@@ -200,7 +200,7 @@ export class PGRM
                     [new TruncateTestWidget()]
                 )
             ];
-        DEFAULT_FILTER = new Filter("DEFAULT", (i) => i.ItemID === 1362);
+        DEFAULT_FILTER = new Filter("DEFAULT", (i) => !blacklistedItems.includes(i.ItemID) && [97, 99, 107, 346, 353, 355, 356, 357, 488, 1021, 1362, 1369, 1379, 1480, 1484, 1521].includes(i.ItemID));
         /*new Filter("DEFAULT", (i) =>
             i.T !== 28 && 
             i.T !== 35 && 
