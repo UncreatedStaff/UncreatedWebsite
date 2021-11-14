@@ -5,6 +5,7 @@ import { Page, SlotPage, ContainerPage, SlotCell, InventoryCell, Item, Pages } f
 import { Dictionary, Filter } from "./dictionary.js";
 import { Wiki } from "./wiki.js";
 import { ContextMenu, ContextButton } from "./contextmenu.js";
+import { AttachmentEditor } from "./attachments.js";
 import '../packages/jQuery.3.6.0/Content/Scripts/jquery-3.6.0.js';
 
 /*jshint esversion: 6 */
@@ -24,12 +25,17 @@ export const PAGES = Object.freeze({
     C_SHIRT: -5,
     C_VEST: -6,
     C_BACKPACK: -7,
-    C_PANTS: -8
+    C_PANTS: -8,
+    C_SIGHT: -9,
+    C_TACTICAL: -10,
+    C_GRIP: -11,
+    C_BARREL: -12,
+    C_MAGAZINE: -13
 });
 // order to sort pages when calling Pages.sortPages();
 export const PAGEORDER = [PAGES.HANDS, PAGES.BACKPACK, PAGES.VEST, PAGES.SHIRT, PAGES.PANTS, PAGES.PRIMARY, PAGES.SECONDARY,
 PAGES.C_BACKPACK, PAGES.C_VEST, PAGES.C_SHIRT, PAGES.C_PANTS, PAGES.C_HAT, PAGES.C_MASK, PAGES.C_GLASSES];
-export const blacklistedItems = [1522, 33301, 33300, 36058, 36059, 38311, 38351, 38353, 38355, 38357, 38359, 38361, 38363, 33302, 38317, 38319, 38343, 38344, 38404, 20002, ];
+export const blacklistedItems = [1522, 33301, 33300, 36058, 36059, 38311, 38351, 38353, 38355, 38357, 38359, 38361, 38363, 33302, 38317, 38319, 38343, 38344, 38404, 20002];
 export var DEFAULT_FILTER;
 document.body.onload = startEditor;
 /**
@@ -149,6 +155,8 @@ export class PGRM
     bounds = null;
     /** @type {boolean} **/
     moveConsumed = true;
+    /** @type {AttachmentEditor} */
+    attachmentEditor = null;
     /**
      * Begin all initialization.
      * @returns {void}
@@ -192,7 +200,8 @@ export class PGRM
                     [new TruncateTestWidget()]
                 )
             ];
-        DEFAULT_FILTER = new Filter("DEFAULT", (i) =>
+        DEFAULT_FILTER = new Filter("DEFAULT", (i) => i.ItemID === 1362);
+        /*new Filter("DEFAULT", (i) =>
             i.T !== 28 && 
             i.T !== 35 && 
             i.LocalizedName !== "#NAME" && 
@@ -200,7 +209,7 @@ export class PGRM
             (isNaN(Number(i.LocalizedName)) || !isNaN(Number(i.Name))) && 
             (i.T != 1 || !i.IsTurret) &&
             (!i.Name.includes("Kiosk"))
-            );
+            );*/
         this.savedContextMenus =
         [
             new ContextMenu("Item",
@@ -224,6 +233,7 @@ export class PGRM
         this.dictionary = new Dictionary();
         this.wiki = new Wiki();
         this.interval = setInterval(tickInt, 0.1);
+        this.attachmentEditor = new AttachmentEditor();
         this.updateScale();
         this.tick();
         this.url = new URLSearchParams(window.location.search);
@@ -299,6 +309,8 @@ export class PGRM
             this.pages.updateScale();
         if (this.popup != null)
             this.popup.updateDims(this.context);
+        if (this.attachmentEditor && this.attachmentEditor.isOpen)
+            this.attachmentEditor.updateDims();
         if (this.dictionary)
             this.dictionary.updateDims(this.context);
         if (this.wiki)
@@ -347,12 +359,14 @@ export class PGRM
             Program.popup.onClick(x, y);
             this.mouseBtn1Consumed = true;
         }
-        else if (this.dictionary && this.dictionary.isOpen)
+        if (!this.mouseBtn1Consumed && this.attachmentEditor.isOpen)
+            this.attachmentEditor.onClick(x, y);
+        if (this.dictionary && this.dictionary.isOpen)
         {
             this.dictionary.onClick(x, y);
             this.mouseBtn1Consumed = true;
         }
-        else if (this.wiki && this.wiki.isOpen)
+        if (this.wiki && this.wiki.isOpen)
         {
             this.wiki.onClick(x, y);
             this.mouseBtn1Consumed = true;
@@ -376,6 +390,8 @@ export class PGRM
             this.contextMenu.onMouseMove(x, y);
         if (Program.popup != null && Program.popup.consumeKeys)
             Program.popup.onMouseMoved(x, y);
+        if (!this.moveConsumed && this.attachmentEditor && this.attachmentEditor.isOpen)
+            this.attachmentEditor.onMouseMoved(x, y);
         else if (this.pages)
             this.pages.onMouseMoved(x, y);
         if (!this.moveConsumed && this.dictionary)
@@ -583,6 +599,8 @@ function tick(ctx, deltaTime, realtime, ticks, canvas)
     var loop = false;
     if (!Program.isLoading)
     {
+        if (Program.attachmentEditor && Program.attachmentEditor.isOpen)
+            loop |= Program.attachmentEditor.render(ctx, deltaTime, realtime);
         if (Program.popup)
             loop |= Program.popup.render(ctx, deltaTime, realtime);
         if (Program.dictionary)
@@ -633,8 +651,9 @@ function contextOverride(event)
  */
 function editAttachments(btn)
 {
-    if (btn.owner && btn.owner.item)
+    if (btn.owner && btn.owner.parent)
     {
+        Program.attachmentEditor.loadItem(btn.owner.parent.item);
         return true;
     }
     else return false;
@@ -769,6 +788,15 @@ function keyPress(event)
     else if (event.keyCode === 75) // k
     {
         openKitWindow();
+    }
+    else if (event.keyCode === 27)
+    {
+        if (Program.attachmentEditor.isOpen)
+        {
+            Program.attachmentEditor.isOpen = false;
+            Program.attachmentEditor.loadItem(undefined);
+            Program.invalidate();
+        }
     }
     else if (event.keyCode === 65) // shift + a
     {

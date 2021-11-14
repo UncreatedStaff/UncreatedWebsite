@@ -2,6 +2,7 @@ import { Radius, CenteredTextData, TextMeasurement, roundedRectPath, getScale, r
 import { Program, blacklistedItems, DEFAULT_FILTER } from "./editor.js";
 import { Item } from "./page.js";
 import * as C from "./const.js";
+/** @typedef {import('./editor.js').ItemData} ItemData */
 
 export class Dictionary
 {
@@ -97,7 +98,7 @@ export class Dictionary
         this.activeFilters = [];
         this.persistantFilter = DEFAULT_FILTER;
         this.filters = [
-            new Filter("Weapon", (i) => (i.T === 1 || i.T === 3 || i.T === 40) && i.ItemID > 30000),
+            new Filter("Weapon", (i) => (i.T === 1 || i.T === 3 || i.T === 40)),// && i.ItemID > 30000),
             new Filter("Explosive", (i) => (i.T === 3 && i.Explosive) || i.T === 18 || (i.T === 8 && i.Explosive) || i.T === 31),
             new Filter("Medical", (i) => i.T === 42),
             new Filter("Consumable", (i) => (i.T === 14 && i.T !== 42) || i.T === 41 || i.T === 43 || (i.T === 19 && (i.Food.Clean > 0 || i.Water.Clean > 0))),

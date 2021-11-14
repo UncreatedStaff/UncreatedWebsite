@@ -1,6 +1,7 @@
 import { NotImplementedException, Radius, TextMeasurement, roundedRectPath, onImageLoad, getScale, roundedRect } from "./util.js";
 import { PAGES, Program, PAGEORDER } from "./editor.js";
 import * as C from "./const.js";
+/** @typedef {import('./editor.js').ItemData} ItemData */
 
 export class Pages
 {
@@ -14,7 +15,7 @@ export class Pages
     pages;
     /** @type {Item} */
     pickedItem;
-    /** @type {Map<number, HTMLImageElement>} */
+    /** @type {Map<number | string, HTMLImageElement>} */
     iconCache;
 
     /**
@@ -1495,7 +1496,7 @@ export class SlotCell extends Cell
     {
         if (this.#dontRequestImage || this.backgroundIconSrc === null || this.backgroundIconSrc === "none") return;
         if (!Program.pages.pages[this.page]) return;
-        var id = Program.pages.pages[this.page].pageID * -1;
+        var id = Program.pages.pages[this.page].pageID;
         this.background = Program.pages.iconCache.get(id);
         if (!this.background)
         {

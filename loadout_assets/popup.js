@@ -1,6 +1,7 @@
 import * as C from "./const.js";
 import { Radius, WrappedLine, CenteredTextData, roundedRect, TextMeasurement } from "./util.js";
 import { Program } from "./editor.js";
+/** @typedef {import('./editor.js').ItemData} ItemData */
 
 /**
  * Customizable popup message.

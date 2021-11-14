@@ -1,6 +1,7 @@
 import { Program } from "./editor.js";
 import { Radius, TextMeasurement, NotImplementedException, roundedRect, CenteredTextData } from "./util.js";
 import * as C from "./const.js";
+/** @typedef {import('./editor.js').ItemData} ItemData */
 
 export class ContextMenu
 {
