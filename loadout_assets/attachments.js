@@ -1,9 +1,9 @@
-import { NotImplementedException, Radius, TextMeasurement, roundedRectPath, onImageLoad, getScale, roundedRect, CenteredTextData } from "./util.js";
+import { NotImplementedException, Radius, TextMeasurement, roundedRectPath, onImageLoad, getScale, roundedRect, CenteredTextData, WebImage, getData } from "./util.js";
 import { PAGES, Program, PAGEORDER } from "./editor.js";
 import * as C from "./const.js";
-/** @typedef {import('./editor.js').ItemData} ItemData */
 
-const blacklistedAttachments = [ 38335, 1301, 354, 350 ];
+const blacklistedAttachments = [ 38335, 1301, 354, 350, 117 ];
+const unpicturedAttachments = [ 1301, 354, 350, 117, 1167, 1002 ];
 
 const lockedItems = [ 
     {
@@ -25,8 +25,13 @@ const lockedItems = [
     {
         id: 346,
         locked: [ "barrel" ]
+    },
+    {
+        id: 116,
+        locked: [ "barrel" ]
     }
 ];
+const byteMax = 0b11111111;
 export class AttachmentEditor
 {
     /**
@@ -93,7 +98,7 @@ export class AttachmentEditor
      * @property {boolean} HasGrip
      * @property {boolean} HasBarrel
      * 
-     * @typedef {ItemData & _gun} GunData
+     * @typedef {import("./editor.js").ItemData & _gun} GunData
      * 
      * @typedef _attachment T = 9
      * @property {number[]} Calibers
@@ -105,7 +110,7 @@ export class AttachmentEditor
      * @property {number} Firerate
      * @property {number} BallisticDamageMultiplier
      * 
-     * @typedef {ItemData & _attachment} AttachmentData
+     * @typedef {import("./editor.js").ItemData & _attachment} AttachmentData
      * 
      * @typedef _sight T = 10
      * @prop {number} Vision ELightingVision
@@ -170,6 +175,8 @@ export class AttachmentEditor
      */
     /** @type {GunData} */
     itemData;
+    /** @type {import("./page.js").Item} */
+    item;
     /** @type {SightData} */
     sight;
     /** @type {TacticalData} */
@@ -204,10 +211,8 @@ export class AttachmentEditor
     availableMagazines;
     /** @type {boolean} */
     isOpen;
-    /** @type {HTMLImageElement} */
-    #itemPreview;
-    /** @type {boolean} */
-    #dontRequestImage;
+    /** @type {WebImage} */
+    #preview;
     /** @type {ItemSlot[]} */
     #slots;
     /** @type {number} */
@@ -216,8 +221,21 @@ export class AttachmentEditor
     defaultSight;
     /** @type {number} */
     itemDistance;
+    /** @type {number} */
+    #panelX;
+    /** @type {number} */
+    #panelY;
+    /** @type {number} */
+    #panelWidth;
+    /** @type {number} */
+    #panelHeight;
+    /** @type {Radius} */
+    #panelRadius;
+    /** @type {DataPanel} */
+    #panel;
     constructor()
     {
+        this.#preview = new WebImage();
         this.availableSights = [];
         this.availableTacticals = [];
         this.availableGrips = [];
@@ -234,22 +252,36 @@ export class AttachmentEditor
         this.defaultSight = 0;
         this.itemDistance = 120;
         this.tileSize = C.tileSize;
+        this.#panelRadius = new Radius(12);
+        this.#panel = new DataPanel(this.itemData, this);
     }
     invalidatePreview()
     {
-        this.#itemPreview = null;
-        this.#dontRequestImage = false;
+        if (this.itemData)
+        {
+            var id = this.path;
+            this.#preview.replace(id, C.attachmentIconPrefix + id + ".png", 
+                this.itemData.SizeX * C.attachmentIconSizeMult, this.itemData.SizeY * C.attachmentIconSizeMult);
+        }
+        else
+            this.#preview.replace();
+    }
+    close()
+    {
+        this.loadItem(undefined);
     }
     /**
      * Loads an item.
-     * @param {GunData} itemData 
+     * @param {import("./page.js").Item} itemData 
      */
     loadItem(itemData)
     {
-        this.itemData = itemData;
+        var wasOpen = this.isOpen;
         this.isOpen = itemData !== undefined;
         if (this.isOpen)
         {
+            this.itemData = itemData.item;
+            this.item = itemData;
             for (var i = 0; i < this.#slots.length; i++)
             {
                 this.#slots[i].locked = false;
@@ -286,15 +318,76 @@ export class AttachmentEditor
                 }
                 else this.#slots[i].middle.displayColor = C.lockedCellColor;
             }
-            
-            this.defaultSight = itemData.DefaultSight;
+            this.defaultSight = itemData.state[0] | (itemData.state[1] << 8);
+            if (!this.isValid(this.defaultSight)) this.defaultSight = this.itemData.DefaultSight;
             this.updateAttachments(this.defaultSight);
             this.sight = this.defaultSight;
-            this.tactical = itemData.DefaultTactical;
-            this.grip = itemData.DefaultGrip;
-            this.barrel = itemData.DefaultBarrel;
-            this.magazine = itemData.DefaultMagazine;
+            this.tactical = itemData.state[2] | (itemData.state[3] << 8);
+            if (!this.isValid(this.tactical)) this.tactical = this.itemData.DefaultTactical;
+            this.grip = itemData.state[4] | (itemData.state[5] << 8);
+            if (!this.isValid(this.grip)) this.grip = this.itemData.DefaultGrip;
+            this.barrel = itemData.state[6] | (itemData.state[7] << 8);
+            if (!this.isValid(this.barrel)) this.barrel = this.itemData.DefaultBarrel;
+            this.magazine = itemData.state[8] | (itemData.state[9] << 8);
+            if (!this.isValid(this.magazine)) this.magazine = this.itemData.DefaultMagazine;
             this.#loadSettings();
+        }
+        else if (wasOpen)
+        {
+            var firerate = (this.itemData.FireRates & 0b1000 ? 2 : (this.itemData.FireRates & 0b0100 ? 3 : (this.itemData.FireRates & 0b0010 ? 1 : 0)));
+            var state = new Uint8Array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, firerate, 0, 100, 100, 100, 100, 100]);
+            if (this.sight && this.sight > 0)
+            {
+                state[0] = this.sight & byteMax;
+                state[1] = (this.sight >> 8) & byteMax;
+            }
+            if (this.tactical && this.tactical > 0)
+            {
+                state[2] = this.tactical & byteMax;
+                state[3] = (this.tactical >> 8) & byteMax;
+            }
+            if (this.grip && this.grip > 0)
+            {
+                state[4] = this.grip & byteMax;
+                state[5] = (this.grip >> 8) & byteMax;
+            }
+            if (this.barrel && this.barrel > 0)
+            {
+                state[6] = this.barrel & byteMax;
+                state[7] = (this.barrel >> 8) & byteMax;
+            }
+            if (this.magazine && this.magazine > 0)
+            {
+                state[8] = this.magazine & byteMax;
+                state[9] = (this.magazine >> 8) & byteMax;
+            }
+            if (this.magazine && this.magazine > 0)
+            {
+                for (var i = 0; i < Program.DATA.items.length; i++)
+                {
+                    if (Program.DATA.items[i].ItemID === this.magazine)
+                    {
+                        state[10] = Program.DATA.items[i].Amount & byteMax;
+                        break;
+                    }
+                }
+            }
+            if (this.tactical && this.tactical > 0)
+            {
+                for (var i = 0; i < Program.DATA.items.length; i++)
+                {
+                    if (Program.DATA.items[i].ItemID === this.magazine)
+                    {
+                        /** @type {TacticalData} */
+                        var b = Program.DATA.items[i];
+                        state[12] = (b.Laser || b.Light || b.Rangefinder) & byteMax;
+                        break;
+                    }
+                }
+            }
+            this.item.setAttachments(state, this.#preview.failed ? undefined : this.#preview.id, this.#preview.source);
+            this.item = undefined;
+            this.itemData = undefined;
         }
         this.updateDims();
     }
@@ -394,26 +487,27 @@ export class AttachmentEditor
     /** @type {string}*/
     get path()
     {
-        if (this.itemData)
-        {
-            var sight = (this.sight != undefined ? this.sight : 0).toString();
-            var tactical = (this.tactical != undefined ? this.tactical : 0).toString();
-            var grip = (this.grip != undefined ? this.grip : 0).toString();
-            var barrel = (this.barrel != undefined ? this.barrel : 0).toString();
-            var magazine = (this.magazine != undefined ? this.magazine : 0).toString();
-            return `${this.itemData.ItemID.toString()}/${sight}_${tactical}_${grip}_${barrel}_${magazine}`;
-        }
-        return undefined;
+        var sight = (this.sight != undefined && !unpicturedAttachments.includes(this.sight) ? this.sight : 0).toString();
+        var tactical = (this.tactical != undefined && !unpicturedAttachments.includes(this.tactical) ? this.tactical : 0).toString();
+        var grip = (this.grip != undefined && !unpicturedAttachments.includes(this.grip) ? this.grip : 0).toString();
+        var barrel = (this.barrel != undefined && !unpicturedAttachments.includes(this.barrel) ? this.barrel : 0).toString();
+        var magazine = (this.magazine != undefined && !unpicturedAttachments.includes(this.magazine) ? this.magazine : 0).toString();
+        return `${this.itemData.ItemID.toString()}/${sight}_${tactical}_${grip}_${barrel}_${magazine}`;
     }
     updateDims()
     {
         if (!this.itemData) return;
         this.tileSize = Program.canvas.width / 64;
-        this.#previewSizeX = Program.canvas.width / 6;
-        this.#previewSizeY = this.#previewSizeX / this.itemData.SizeX * this.itemData.SizeY;
-        this.#previewPosX = (Program.canvas.width - this.#previewSizeX) / 2;
-        this.#previewPosY = (Program.canvas.height - this.#previewSizeY) / 5;
-        this.#cellSize = this.#previewSizeX / this.itemData.SizeX;
+        this.#panelX = Program.canvas.width / 8;
+        this.#panelY = Program.canvas.height / 8;
+        this.#panelWidth = Program.canvas.width * 0.75;
+        this.#panelHeight = Program.canvas.height * 0.35;
+        var scale = getScale(this.#panelWidth / 3, this.#panelHeight / 3, this.itemData.SizeX, this.itemData.SizeY);
+        this.#previewSizeX = this.itemData.SizeX * scale;
+        this.#previewSizeY = this.itemData.SizeY * scale;
+        this.#previewPosX = this.#panelX + 16;
+        this.#previewPosY = this.#panelY + 16;
+        this.#cellSize = scale;
         if (this.#previewPosY < 5) this.#previewPosY = 5;
         var ht = Program.canvas.height * 2.25 / 3;
         this.itemDistance = Program.canvas.width / (12 * C.itemDistanceMultiplier);
@@ -424,19 +518,25 @@ export class AttachmentEditor
             slot.posY = ht;
             slot.updateDims();
         }
-        Program.context.font = "bold " + C.attachmentPreviewUnavailableSize.toString() + "px Segoe UI";
+        Program.context.font = "bold " + (this.itemData.SizeX * C.attachmentPreviewUnavailableSize).toString() + "px Segoe UI";
         this.#text = CenteredTextData.centerTextHeight(Program.context, "Preview Unavailable", this.#previewSizeY, C.attachmentPreviewUnavailableSize);
+        this.#panel.updateDims(this.#previewPosX, this.#previewPosY, this.#previewSizeX, this.#previewSizeY, this.#panelX, this.#panelY, this.#panelWidth, this.#panelHeight);
     }
     /**
      * @param {CanvasRenderingContext2D} ctx Rendering Context
      */
     render(ctx)
     {
-        if (!this.#itemPreview && !this.#dontRequestImage)
-            this.getPreview(false);
         Program.clearCanvas();
         if (this.itemData)
         {
+            roundedRectPath(ctx, this.#panelX, this.#panelY, this.#panelWidth, this.#panelHeight, this.#panelRadius);
+            ctx.globalAlpha = 0.2;
+            ctx.fillStyle = C.defaultCellColor;
+            ctx.fill();
+            ctx.globalAlpha = 1.0;
+            ctx.strokeStyle = "#000000";
+            ctx.stroke();
             for (var x = 0; x < this.itemData.SizeX; x++)
             {
                 for (var y = 0; y < this.itemData.SizeY; y++)
@@ -452,20 +552,9 @@ export class AttachmentEditor
                     ctx.stroke();
                 }
             }
-            if (this.#itemPreview && !this.#dontRequestImage)
+            if (this.#preview.failed || !this.#preview.draw(ctx, this.#previewPosX, this.#previewPosY, this.#previewSizeX, this.#previewSizeY))
             {
-                try
-                {
-                    ctx.drawImage(this.#itemPreview, this.#previewPosX, this.#previewPosY, this.#previewSizeX, this.#previewSizeY);
-                }
-                catch
-                {
-                    this.#dontRequestImage = true;
-                }
-            }
-            else
-            {
-                ctx.font = "bold " + C.attachmentPreviewUnavailableSize.toString() + "px Segoe UI";
+                ctx.font = "bold " + (this.itemData.SizeX * C.attachmentPreviewUnavailableSize).toString() + "px Segoe UI";
                 ctx.textAlign = "center";
                 ctx.fillStyle = "#ffffff";
                 ctx.fillText("Preview Unavailable", this.#previewPosX + this.#previewSizeX / 2, this.#previewPosY + this.#text);
@@ -474,27 +563,6 @@ export class AttachmentEditor
         for (var i = 0; i < this.#slots.length; i++)
         {
             this.#slots[i].render(ctx);
-        }
-    }
-
-    /**
-     * Request item preview
-     * @param {boolean} n Is new icon (disabled dont request image)
-     * @returns {void}
-     */
-    getPreview(n)
-    {
-        if (this.#dontRequestImage && n) this.#dontRequestImage = false;
-        var id = this.path;
-        if (this.#dontRequestImage || id === undefined) return;
-        this.#itemPreview = Program.pages.iconCache.get(id);
-        if (!this.#itemPreview)
-        {
-            this.#itemPreview = new Image(this.itemData.SizeX * C.attachmentIconSizeMult, this.itemData.SizeY * C.attachmentIconSizeMult);
-            this.#itemPreview.id = id;
-            this.#itemPreview.onload = onImageLoad;
-            this.#itemPreview.src = C.attachmentIconPrefix + id + ".png";
-            Program.pages.iconCache.set(id, this.#itemPreview);
         }
     }
 
@@ -539,8 +607,6 @@ class ItemSlot
     posY;
     /** @type {number} */
     itemDistance;
-    /** @type {ItemData} */
-    selectedItem;
     /**
      * grip | barrel | tactical | sight | magazine 
      * @type {string} */ 
@@ -804,8 +870,8 @@ class ItemSlot
                 }
             }
             this.middle.index = -1;
-            this.middle.load(this.type);
             this.#setType(undefined);
+            this.middle.load(this.type);
             Program.mouseBtn1Consumed = true;
             return true;
         }
@@ -824,8 +890,8 @@ class ItemSlot
                 }
                 var it = this.items[icon.index] ?? this.type;
                 this.middle.index = icon.index;
-                this.middle.load(it);
                 this.#setType(it.ItemID);
+                this.middle.load(it);
                 icon.disabled = true;
                 Program.mouseBtn1Consumed = true;
                 return true;
@@ -840,14 +906,8 @@ class ItemIcon
 {
     /** @type {ItemSlot} */
     #owner;
-    /** @type {string} */
-    #src;
-    /** @type {number} */
-    #id;
     /** @type {number} */
     index;
-    /** @type {HTMLImageElement} */
-    #icon;
     /** @type {number} */
     sizeX;
     /** @type {number} */
@@ -861,8 +921,6 @@ class ItemIcon
     /** @type {number} */
     height;
     /** @type {boolean} */
-    #dontRequestImage;
-    /** @type {boolean} */
     disabled;
     /** @type {boolean} */
     occupied;
@@ -872,6 +930,8 @@ class ItemIcon
     hovered;
     /** @type {boolean} */
     useBestFit;
+    /** @type {WebImage} */
+    webImage;
     /**
      * @param {ItemSlot} owner
      * @param {boolean} middle
@@ -885,41 +945,23 @@ class ItemIcon
         this.posY = 0;
         this.width = this.#owner.owner.tileSize * 2;
         this.height = this.#owner.owner.tileSize * 2;
-        this.#dontRequestImage = false;
         this.displayColor = this.#owner.locked ? C.lockedCellColor : C.defaultCellColor;
         this.hovered = false;
         this.index = 0;
         this.disabled = false;
         this.useBestFit = middle;
+        this.webImage = new WebImage();
     }
     /**
-     * Request item preview
-     * @returns {void}
-     */
-    #getIcon()
-    {
-        if (this.#dontRequestImage || this.#id === undefined || this.#src === undefined) return;
-        this.#icon = Program.pages.iconCache.get(this.#id);
-        if (!this.#icon)
-        {
-            this.#icon = new Image(this.sizeX * imgSize, this.sizeY * imgSize);
-            this.#icon.id = this.#id;
-            this.#icon.onload = onImageLoad;
-            this.#icon.src = this.#src;
-            Program.pages.iconCache.set(this.#id, this.#icon);
-        }
-    }
-    /**
-     * @param {string | ItemData} itemData item data or (grip | barrel | tactical | sight | magazine)
+     * @param {string | import("./editor.js").ItemData} itemData item data or (grip | barrel | tactical | sight | magazine)
      */
     load(itemData)
     {
         if (itemData === undefined)
         {
-            this.#src = undefined;
-            this.#id = undefined;
             this.sizeX = 2;
             this.sizeY = 2;
+            this.webImage.replace(undefined, undefined, this.sizeX * imgSize, this.sizeY * imgSize);
             if (!this.useBestFit)
             {
                 this.width = this.#owner.owner.tileSize * 2;
@@ -940,56 +982,43 @@ class ItemIcon
             switch (itemData)
             {
                 case "grip":
-                    this.#src = C.statIconPrefix + "grip.svg";
-                    this.#id = PAGES.C_GRIP;
-                    this.#getIcon();
+                    this.webImage.replace(PAGES.C_GRIP, C.statIconPrefix + "grip.svg", this.sizeX * imgSize, this.sizeY * imgSize);
                     break;
                 case "barrel":
-                    this.#src = C.statIconPrefix + "barrel.svg";
-                    this.#id = PAGES.C_BARREL;
-                    this.#getIcon();
+                    this.webImage.replace(PAGES.C_BARREL, C.statIconPrefix + "barrel.svg", this.sizeX * imgSize, this.sizeY * imgSize);
                     break;
                 case "tactical":
-                    this.#src = C.statIconPrefix + "tactical.svg";
-                    this.#id = PAGES.C_TACTICAL;
-                    this.#getIcon();
+                    this.webImage.replace(PAGES.C_TACTICAL, C.statIconPrefix + "tactical.svg", this.sizeX * imgSize, this.sizeY * imgSize);
                     break;
                 case "sight":
-                    this.#src = C.statIconPrefix + "sight.svg";
-                    this.#id = PAGES.C_SIGHT;
-                    this.#getIcon();
+                    this.webImage.replace(PAGES.C_SIGHT, C.statIconPrefix + "sight.svg", this.sizeX * imgSize, this.sizeY * imgSize);
                     break;
                 case "magazine":
-                    this.#src = C.statIconPrefix + "ammo.svg";
-                    this.#id = PAGES.C_MAGAZINE;
-                    this.#getIcon();
+                    this.webImage.replace(PAGES.C_MAGAZINE, C.statIconPrefix + "ammo.svg", this.sizeX * imgSize, this.sizeY * imgSize);
                     break;
                 default:
-                    this.#src = undefined;
-                    this.#id = undefined;
+                    this.webImage.replace(undefined, undefined, this.sizeX * imgSize, this.sizeY * imgSize);
                     break;
             }
         }
         else if (itemData.ItemID)
         {
-            this.#src = C.itemIconPrefix + itemData.ItemID.toString() + (Program.webp ? ".webp" : ".png");
-            this.#id = itemData.ItemID;
             this.sizeX = itemData.SizeX;
             this.sizeY = itemData.SizeY;
+            this.webImage.replace(itemData.ItemID, C.itemIconPrefix + itemData.ItemID.toString() + (Program.webp ? ".webp" : ".png"),
+                this.sizeX * imgSize, this.sizeY * imgSize);
             if (!this.useBestFit)
             {
                 this.width = this.#owner.owner.tileSize * this.sizeX;
                 this.height = this.#owner.owner.tileSize * this.sizeY;
             }
-            this.#getIcon();
             this.occupied = true;
         }
         else
         {
-            this.#src = undefined;
-            this.#id = undefined;
             this.sizeX = 2;
             this.sizeY = 2;
+            this.webImage.replace(undefined, undefined, this.sizeX * imgSize, this.sizeY * imgSize);
             if (!this.useBestFit)
             {
                 this.width = this.#owner.owner.tileSize * 2;
@@ -1005,8 +1034,6 @@ class ItemIcon
      */
     render(ctx)
     {
-        if (!this.#dontRequestImage && this.#icon === null)
-            this.#getIcon();
         if (this.occupied && !this.useBestFit)
         {
             this.#renderCells(ctx, this.posX, this.posY);
@@ -1021,31 +1048,24 @@ class ItemIcon
             ctx.strokeStyle = "#000000";
             ctx.stroke();
         }
-        if (this.#icon)
+        if (!this.webImage.failed)
         {
-            try
+            var w = this.width;
+            var h = this.height
+            var x = this.posX;
+            var y = this.posY;
+            if (!this.occupied)
+                ctx.globalAlpha = 0.03;
+            else if (this.useBestFit)
             {
-                var w = this.width;
-                var h = this.height
-                var x = this.posX;
-                var y = this.posY;
-                if (!this.occupied)
-                    ctx.globalAlpha = 0.03;
-                else if (this.useBestFit)
-                {
-                    let scale = getScale(this.width, this.height, this.sizeX, this.sizeY);
-                    w = this.sizeX * scale;
-                    h = this.sizeY * scale;
-                    x += (this.width - w) / 2;
-                    y += (this.height - h) / 2;
-                }
-                ctx.drawImage(this.#icon, x, y, w, h);
-                ctx.globalAlpha = 1.0;
+                let scale = getScale(this.width, this.height, this.sizeX, this.sizeY);
+                w = this.sizeX * scale;
+                h = this.sizeY * scale;
+                x += (this.width - w) / 2;
+                y += (this.height - h) / 2;
             }
-            catch
-            {
-                this.#dontRequestImage = true;
-            }
+            this.webImage.draw(ctx, x, y, w, h);
+            ctx.globalAlpha = 1.0;
         }
     }
 
@@ -1069,5 +1089,106 @@ class ItemIcon
                 ctx.stroke();
             }
         }
+    }
+}
+class DataPanel
+{
+    /** @type {import("./editor.js").ItemData}*/
+    itemData;
+    /** @type {AttachmentEditor}*/
+    owner;
+    /** @type {number}*/
+    #picX;
+    /** @type {number}*/
+    #picY;
+    /** @type {number}*/
+    #picW;
+    /** @type {number}*/
+    #picH;
+    /** @type {number}*/
+    #posX;
+    /** @type {number}*/
+    #posY;
+    /** @type {number}*/
+    #width;
+    /** @type {number}*/
+    #height;
+    /** @type {WebImage}*/
+    #img;
+    /** @type {SightData} */
+    #sight;
+    /** @type {TacticalData} */
+    #tactical;
+    /** @type {GripData} */
+    #grip;
+    /** @type {BarrelData} */
+    #barrel;
+    /** @type {MagazineData} */
+    #magazine;
+    /** @type {WebImage[]} */
+    #allIcons;
+    /** @type {SpreadGraph} */
+    #recoil;
+    /** @type {SpreadGraph} */
+    #spread;
+    /**
+     * @param {import("./editor.js").ItemData} itemData
+     * @param {AttachmentEditor} owner
+     */
+    constructor(itemData, owner)
+    {
+        this.itemData = itemData;
+        this.owner = owner;
+        this.#allIcons = 
+        [ 
+            new WebImage(PAGES.C_SIGHT, C.statIconPrefix + "sight.svg", 1024, 1024),
+            new WebImage(PAGES.C_TACTICAL, C.statIconPrefix + "tactical.svg", 1024, 1024),
+            new WebImage(PAGES.C_GRIP, C.statIconPrefix + "grip.svg", 1024, 1024),
+            new WebImage(PAGES.C_BARREL, C.statIconPrefix + "barrel.svg", 1024, 1024),
+            new WebImage(PAGES.C_MAGAZINE, C.statIconPrefix + "ammo.svg", 1024, 1024)
+        ];
+        for (var i = 0; i < this.#allIcons.length; i++)
+            this.#allIcons[i].request();
+    }
+
+    updateDims(picX, picY, picW, picH, x, y, w, h)
+    {
+        this.#picX = picX;
+        this.#picY = picY;
+        this.#picW = picW;
+        this.#picH = picH;
+        this.#posX = x;
+        this.#posY = y;
+        this.#width = w;
+        this.#height = h;
+    }
+    update()
+    {
+        this.#sight = getData(this.owner.sight);
+        this.#tactical = getData(this.owner.tactical);
+        this.#grip = getData(this.owner.grip);
+        this.#barrel = getData(this.owner.barrel);
+        this.#magazine = getData(this.owner.magazine);
+        this.updateDims();
+    }
+    render(ctx)
+    {
+
+    }
+}
+
+/**
+ * @typedef Point
+ * @property {number} X
+ * @property {number} Y
+ */
+class SpreadGraph
+{
+    /** @type {Point[]} */
+    points;
+
+    constructor()
+    {
+
     }
 }

@@ -229,10 +229,6 @@ export class TextMeasurement
         var ms = ctx.measureText(text);
         return ms.width;
     }
-    static truncateWords(ctx, text, maxWidth)
-    {
-
-    }
     /**
      * Truncate a string without splitting by words.
      * @param {CanvasRenderingContext2D} ctx 
@@ -289,8 +285,9 @@ export function onImageLoad()
             value.onload = null;
         }
     }
-    Program.invalidateNext(0.2);
-    Program.tick();
+    Program.invalidate();
+    Program.invalidateAfter();
+    Program.invalidateIn(0.2);
 }
 
 /**
@@ -385,4 +382,103 @@ export function supportsWebp()
   // very old browser like IE 8, canvas not supported
   return false;
  }
+}
+
+export class WebImage
+{
+    /** @type {HTMLImageElement} */
+    image;
+    /** @type {string} */
+    id;
+    /** @type {string} */
+    source;
+    /** @type {boolean} */
+    failed;
+    /** @type {number} */
+    sizeX;
+    /** @type {number} */
+    sizeY;
+    /**
+     * @param {string} id
+     * @param {string} src
+     * @param {number} sizeX
+     * @param {number} sizeY
+     */
+    constructor(id, source, sizeX, sizeY)
+    {
+        this.failed = false;
+        if (id === undefined || source === undefined || sizeX === undefined || sizeY === undefined)
+            return;
+        this.id = id;
+        this.source = source;
+        this.sizeX = sizeX;
+        this.sizeY = sizeY;
+        this.request();
+    }
+
+    request()
+    {
+        if (this.failed || this.id === undefined || this.source === undefined) return;
+        this.image = Program.pages.iconCache.get(this.id);
+        if (!this.image)
+        {
+            this.image = new Image(this.sizeX, this.sizeY);
+            this.image.id = this.id;
+            this.image.onload = onImageLoad;
+            this.image.src = this.source;
+            Program.pages.iconCache.set(this.id, this.image);
+        }
+    }
+
+    replace(id, source, sizeX = undefined, sizeY = undefined)
+    {
+        this.id = id;
+        this.source = source;
+        if (sizeX) this.sizeX = sizeX;
+        if (sizeY) this.sizeY = sizeY;
+        this.image = undefined;
+        this.failed = false;
+        this.request();
+    }
+
+    /**
+     * @param {CanvasRenderingContext2D} ctx
+     * @param {number} x
+     * @param {number} y
+     * @param {number} w
+     * @param {number} h
+     * @returns {boolean} Successfully drawn image
+     */
+    draw(ctx, x, y, w, h)
+    {
+        if (this.failed) return false;
+        if (!this.image)
+            this.request();
+        try
+        {
+            ctx.drawImage(this.image, x, y, w, h);
+            return true;
+        }
+        catch
+        {
+            this.failed = true;
+            Program.invalidateAfter();
+            return false;
+        }
+    }
+
+}
+/**
+ * Get item data from id.
+ * @param {number} id
+ * @returns {import("./editor.js").ItemData}
+ */
+export function getData(id)
+{
+    if (!id || id === 0) return undefined; 
+    for (var i = 0; i < Program.DATA.items.length; i++)
+    {
+        if (Program.DATA.items[i].ItemID === id) return Program.DATA.items[i];
+    }
+    return undefined;
 }

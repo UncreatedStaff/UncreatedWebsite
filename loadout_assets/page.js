@@ -1592,6 +1592,8 @@ export class Item
     #lastClickTime;
     /** @type {HTMLImageElement} */
     #icon;
+    /** @type {Uint8Array} */
+    state;
 
     /**
      * @param {number} id Item ID
@@ -1615,6 +1617,8 @@ export class Item
         this.page = page;
         this.isPicked = false;
         this.item = itemData;
+        if (this.item) this.state = this.item.DefaultState;
+        else this.state = new Uint8Array(0);
         this.isOrphan = orphan;
         this.sizes = this.getSizes(this.rotation);
         this.pendingRotation = this.rotation;
@@ -1705,6 +1709,16 @@ export class Item
         }
     }
 
+    setAttachments(state, cachedIconId, cachedIconName, sizeMult = 512)
+    {
+        this.state = state;
+        if (cachedIconId !== undefined)
+        {
+            this.#getIconCustom(cachedIconName, cachedIconId, sizeMult);
+            Program.invalidate();
+        }
+    }
+
     /**
      * Begin a request for the item's icon.
      */
@@ -1719,6 +1733,22 @@ export class Item
             this.#icon.onload = onImageLoad;
             this.#icon.src = C.itemIconPrefix + this.id.toString() + (Program.webp ? ".webp" : ".png");
             Program.pages.iconCache.set(this.id, this.#icon);
+        }
+    }
+    /**
+     * Begin a request for the item's icon.
+     */
+    #getIconCustom(name, id, sizeMult = 512)
+    {
+        if (this.#dontRequestImage) return;
+        this.#icon = Program.pages.iconCache.get(id);
+        if (!this.#icon)
+        {
+            this.#icon = new Image(this.sizeX * sizeMult, this.sizeY * sizeMult);
+            this.#icon.id = id;
+            this.#icon.onload = onImageLoad;
+            this.#icon.src = name;
+            Program.pages.iconCache.set(id, this.#icon);
         }
     }
 

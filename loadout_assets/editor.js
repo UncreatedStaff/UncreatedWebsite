@@ -36,6 +36,7 @@ export const PAGES = Object.freeze({
 export const PAGEORDER = [PAGES.HANDS, PAGES.BACKPACK, PAGES.VEST, PAGES.SHIRT, PAGES.PANTS, PAGES.PRIMARY, PAGES.SECONDARY,
 PAGES.C_BACKPACK, PAGES.C_VEST, PAGES.C_SHIRT, PAGES.C_PANTS, PAGES.C_HAT, PAGES.C_MASK, PAGES.C_GLASSES];
 export const blacklistedItems = [1521, 1522, 33301, 33300, 36058, 36059, 38311, 38351, 38353, 38355, 38357, 38359, 38361, 38363, 33302, 38317, 38319, 38343, 38344, 38404, 20002];
+const whitelistedItems = [4, 97, 99, 107, 109, 112, 116, 132, 297, 346, 353, 355, 356, 357, 363, 380, 488, 519, 1000, 1021, 1037, 1039, 1165, 1362, 1364, 1369, 1375, 1379, 1382, 1476, 1477, 1480, 1481, 1484, 1521];
 export var DEFAULT_FILTER;
 document.body.onload = startEditor;
 /**
@@ -147,6 +148,8 @@ export class PGRM
     invalidated = true;
     /** @type {boolean} **/
     invalidatedAfter = false;
+    /** @type {number} **/
+    nextInvalidation = -1;
     /** @type {boolean} **/
     mouseIsOutside = true;
     /** @type {number} **/
@@ -200,7 +203,7 @@ export class PGRM
                     [new TruncateTestWidget()]
                 )
             ];
-        DEFAULT_FILTER = new Filter("DEFAULT", (i) => !blacklistedItems.includes(i.ItemID) && [97, 99, 107, 346, 353, 355, 356, 357, 488, 1021, 1362, 1369, 1379, 1480, 1484, 1521].includes(i.ItemID));
+        DEFAULT_FILTER = new Filter("DEFAULT", (i) => !blacklistedItems.includes(i.ItemID) && whitelistedItems.includes(i.ItemID));
         /*new Filter("DEFAULT", (i) =>
             i.T !== 28 && 
             i.T !== 35 && 
@@ -208,7 +211,7 @@ export class PGRM
             !blacklistedItems.includes(i.ItemID) && 
             (isNaN(Number(i.LocalizedName)) || !isNaN(Number(i.Name))) && 
             (i.T != 1 || !i.IsTurret) &&
-            (!i.Name.includes("Kiosk"))
+            (!i.Name.includes("Kiosk")) 
             );*/
         this.savedContextMenus =
         [
@@ -322,12 +325,17 @@ export class PGRM
      */
     tick()
     {
-        if (!this.invalidated && this.invalidateTimeRemaining <= 0) return;
         var nextTick = new Date().getTime();
         this.deltaTime = (nextTick - this.lastTick) / 1000.0;
         this.time += this.deltaTime;
         this.lastTick = nextTick;
         this.ticks++;
+        if (!this.invalidated && 
+            this.invalidateTimeRemaining <= 0 && 
+            (this.nextInvalidation === -1 || this.time < this.nextInvalidation)
+            ) return;
+        if (this.nextInvalidation !== -1 && this.time >= this.nextInvalidation)
+            this.nextInvalidation = -1;
         if (this.invalidateTimeRemaining > 0)
         {
             this.invalidateTimeRemaining -= this.deltaTime;
@@ -448,6 +456,14 @@ export class PGRM
     invalidateAfter()
     {
         this.invalidatedAfter = true;
+    }
+    /**
+     * Tell the next tick after *seconds* seconds to invalidate. Gets cancelled out by next call of this function.
+     * @param {number} seconds
+     */
+    invalidateIn(seconds)
+    {
+        this.nextInvalidation = this.time + seconds;
     }
 }
 
@@ -653,7 +669,7 @@ function editAttachments(btn)
 {
     if (btn.owner && btn.owner.parent)
     {
-        Program.attachmentEditor.loadItem(btn.owner.parent.item);
+        Program.attachmentEditor.loadItem(btn.owner.parent);
         return true;
     }
     else return false;
@@ -789,12 +805,11 @@ function keyPress(event)
     {
         openKitWindow();
     }
-    else if (event.keyCode === 27)
+    else if (event.keyCode === 27) //esc
     {
         if (Program.attachmentEditor.isOpen)
         {
-            Program.attachmentEditor.isOpen = false;
-            Program.attachmentEditor.loadItem(undefined);
+            Program.attachmentEditor.close();
             Program.invalidate();
         }
     }
